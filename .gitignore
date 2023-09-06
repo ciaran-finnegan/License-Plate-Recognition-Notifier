@@ -1,3 +1,5 @@
+# AWS SSM Parameter Store initialisation script
+*.sh
 # Licence plate information
 *.csv
 # Byte-compiled / optimized / DLL files
