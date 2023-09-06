@@ -41,6 +41,18 @@ s3_bucket_name = get_parameter('/LicensePlateRecognition/S3BucketName')
 s3_file_key = get_parameter('/LicensePlateRecognition/S3FileKey')
 fuzzy_match_threshold = int(get_parameter('/LicensePlateRecognition/FuzzyMatchThreshold'))
 
+# Temporary for debugging
+logger.info(f'Plate Recognizer Token: {plate_recognizer_token}')
+logger.info(f'SES Sender Email: {ses_sender_email}')  
+logger.info(f'Twilio Account SID: {twilio_account_sid}')
+logger.info(f'Twilio Auth Token: {twilio_auth_token}')
+logger.info(f'Twilio From Phone Number: {twilio_from_phone_number}')
+logger.info(f'Twilio To Phone Number: {twilio_to_phone_number}')
+logger.info(f'S3 Bucket Name: {s3_bucket_name}')
+logger.info(f'S3 File Key: {s3_file_key}')  
+logger.info(f'Fuzzy Match Threshold: {fuzzy_match_threshold}')
+
+
 # Retrieve CSV content from S3
 def retrieve_csv_from_s3(s3_client, bucket_name, file_key):
     try:
