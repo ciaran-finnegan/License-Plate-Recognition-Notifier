@@ -21,18 +21,25 @@ jobs:
       - name: Install AWS CLI
         run: |
           pip3 install awscli
+          aws --version
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}   # Change to your region
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
+      - name: Create Deployment Package
+        run: |
+          zip -r deployment-package.zip .
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}   # Change to your region
+
       - name: Deploy to Lambda
         run: |
           aws lambda update-function-code \
             --function-name processInboundEmails \
-            --zip-file fileb://./path/to/your/deployment/package.zip \
+            --zip-file fileb://deployment-package.zip \
             --region $AWS_REGION
         env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
