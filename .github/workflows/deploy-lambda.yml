@@ -35,7 +35,7 @@ jobs:
           zip -r ../deployment-package.zip .
           chmod 444 ../deployment-package.zip
           cd ..
-          zip deployment_package.zip lambda_function.py
+          zip deployment-package.zip lambda_function.py
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}   # Change to your region
 
