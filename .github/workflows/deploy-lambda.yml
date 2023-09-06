@@ -33,7 +33,6 @@ jobs:
           pip3 install -r requirements.txt --target ./package
           cd package
           zip -r ../deployment-package.zip .
-          chmod 444 ../deployment-package.zip
           cd ..
           zip deployment-package.zip lambda_function.py
         env:
