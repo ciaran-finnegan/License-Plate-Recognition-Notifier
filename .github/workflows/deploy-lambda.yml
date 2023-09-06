@@ -29,8 +29,12 @@ jobs:
 
       - name: Create Deployment Package
         run: |
-          pip3 install -r requirements.txt
-          zip -r deployment-package.zip .
+          mkdir package
+          pip3 install -r requirements.txt --target ./package
+          cd package
+          zip -r ../deployment-package.zip .
+          cd ..
+          zip deployment_package.zip lambda_function.py
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}   # Change to your region
 
