@@ -9,6 +9,12 @@ from twilio.rest import Client
 from fuzzywuzzy import fuzz
 import datetime
 import time
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+import base64
+
 
 # Configure logging
 logger = logging.getLogger()
@@ -61,35 +67,35 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
             f'Elapsed Time: {elapsed_time_formatted} seconds'
         )
 
-        # Send the email with execution time and attachment
-        response = ses_client.send_email(
+        # Create a MIME email message with attachments
+        msg = MIMEMultipart()
+        msg['From'] = ses_sender_email
+        msg['To'] = recipient
+        msg['Subject'] = subject
+
+        # Attach the message body
+        msg.attach(MIMEText(message_body_with_time, 'plain'))
+
+        # Attach the file
+        with open('/tmp/attachment.jpg', 'rb') as attachment_file:
+            attachment = MIMEBase('application', 'octet-stream')
+            attachment.set_payload(attachment_file.read())
+            encoders.encode_base64(attachment)
+            attachment.add_header('Content-Disposition', f'attachment; filename=attachment.jpg')
+            msg.attach(attachment)
+
+        # Send the email
+        raw_message = base64.b64encode(msg.as_bytes()).decode()
+        response = ses_client.send_raw_email(
             Source=ses_sender_email,
-            Destination={
-                'ToAddresses': [recipient]
-            },
-            Message={
-                'Subject': {
-                    'Data': subject
-                },
-                'Body': {
-                    'Text': {
-                        'Data': message_body_with_time
-                    }
-                }
-            },
-            # Add an attachment to the email
-            MessageAttachments=[
-                {
-                    'FileName': 'attachment.jpg',  # Specify the attachment file name
-                    'ContentType': 'image/jpeg',  # Set the content type for the attachment
-                    'Data': open('/tmp/attachment.jpg', 'rb').read()  # Read and attach the file
-                }
-            ]
+            Destinations=[recipient],
+            RawMessage={'Data': raw_message}
         )
 
         logger.info(f'SES Email sent with execution time and attachment: {response["MessageId"]}')
     except Exception as e:
         logger.error(f'Error sending SES email: {str(e)}')
+
 
 # Make a Twilio call to open the gate
 def make_twilio_call(registered_to):
