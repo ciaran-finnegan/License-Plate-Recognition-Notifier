@@ -45,11 +45,11 @@ s3_file_key = get_parameter('/LicensePlateRecognition/S3FileKey')
 fuzzy_match_threshold = int(get_parameter('/LicensePlateRecognition/FuzzyMatchThreshold'))
 raw_inbound_email_bucket = get_parameter('/LicensePlateRecognition/RawInboundEmailBucket')  # Ensure this parameter exists in SSM
 
-# Send an email notification using SES with execution time
+# Send an email notification using SES with execution time and attachment
 def send_email_notification(recipient, subject, message_body, script_start_time):
     try:
         start_time = time.time()  # Record the start time
-        
+
         # Include explanatory text, script start time, and elapsed time in the email body
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         elapsed_time = time.time() - start_time  # Calculate the elapsed time
@@ -60,8 +60,8 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
             f'Current Time: {current_time}\n'
             f'Elapsed Time: {elapsed_time_formatted} seconds'
         )
-        
-        # Send the email with execution time
+
+        # Send the email with execution time and attachment
         response = ses_client.send_email(
             Source=ses_sender_email,
             Destination={
@@ -76,10 +76,18 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
                         'Data': message_body_with_time
                     }
                 }
-            }
+            },
+            # Add an attachment to the email
+            MessageAttachments=[
+                {
+                    'FileName': 'attachment.jpg',  # Specify the attachment file name
+                    'ContentType': 'image/jpeg',  # Set the content type for the attachment
+                    'Data': open('/tmp/attachment.jpg', 'rb').read()  # Read and attach the file
+                }
+            ]
         )
-        
-        logger.info(f'SES Email sent with execution time: {response["MessageId"]}')
+
+        logger.info(f'SES Email sent with execution time and attachment: {response["MessageId"]}')
     except Exception as e:
         logger.error(f'Error sending SES email: {str(e)}')
 
