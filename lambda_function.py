@@ -129,8 +129,7 @@ def make_twilio_call(registered_to):
 
 # Lambda handler function
 def lambda_handler(event, context):
-    script_start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Record the script start time
-    start_time = time.time()  # Record the start time
+    script_start_time = time.time()  # Record the start time
     try:
         for record in event.get('Records', []):
             # Extract email information from the event record
