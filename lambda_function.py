@@ -58,7 +58,7 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
     try:
         # Include explanatory text, script start time, and elapsed time in the email body
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        elapsed_time = time.time() - start_time  # Calculate the elapsed time
+        elapsed_time = time.time() - script_start_time  # Calculate the elapsed time
         elapsed_time_formatted = f'{elapsed_time:.1f}'  # Format elapsed time to one decimal place
         message_body_with_time = (
             f'### Script Start Time: {script_start_time} ###\n\n'
