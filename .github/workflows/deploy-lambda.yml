@@ -31,6 +31,8 @@ jobs:
         run: |
           mkdir package
           pip3 install -r requirements.txt --target ./package
+          # Copy libjpeg.so.8 from the Ubuntu system directory
+          cp /usr/lib/x86_64-linux-gnu/libjpeg.so.8 ./package/libjpeg.so.8
           cd package
           zip -r ../deployment-package.zip .
           cd ..
