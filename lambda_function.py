@@ -214,13 +214,13 @@ def lambda_handler(event, context):
                                 
                                 # Send an email notification when a match is found
                                 if score == 1.0:
+                                    make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                                     send_email_notification(ses_email_notification_to, f'Gate Opening Alert - Exact Match Found for Plate: {plate_recognized}',
                                                             f'Registered to: {matched_value}', script_start_time)
-                                    make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                                 else:
+                                    make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                                     send_email_notification(ses_email_notification_to, f'Gate Opening Alert - Fuzzy Match Found for Plate: {plate_recognized}',
                                                             f'Registered to: {matched_value}', script_start_time)
-                                    make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                             else:
                                 logger.info(f'No match found for vehicle license plate number: {plate_recognized}')
                                 
