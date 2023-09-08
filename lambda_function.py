@@ -60,8 +60,12 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         elapsed_time = time.time() - script_start_time  # Calculate the elapsed time
         elapsed_time_formatted = f'{elapsed_time:.1f}'  # Format elapsed time to one decimal place
+        # Convert the script_start_time timestamp to a datetime object
+        script_start_time_datetime = datetime.datetime.fromtimestamp(script_start_time)
+        # Format the datetime object as a string
+        formatted_script_start_time = script_start_time_datetime.strftime("%Y-%m-%d %H:%M:%S")
         message_body_with_time = (
-            f'### Script Start Time: {script_start_time} ###\n\n'
+            f'### Script Start Time: {formatted_script_start_time} ###\n\n'
             f'{message_body}\n\n'
             f'Current Time: {current_time}\n'
             f'Elapsed Time: {elapsed_time_formatted} seconds'
