@@ -26,46 +26,7 @@ ses_client = boto3.client('ses')
 # Retrieve sensitive data and configuration parameters from Parameter Store
 ssm_client = boto3.client('ssm')
 
-# Retrieve sensitive data from Parameter Store
-def get_parameter(parameter_name):
-    try:
-        response = ssm_client.get_parameter(Name=parameter_name, WithDecryption=True)
-        return response['Parameter']['Value']
-    except Exception as e:
-        logging.error(f'Error retrieving parameter {parameter_name}: {str(e)}')
-        return None
-
-# Retrieve sensitive data and configuration parameters from Parameter Store
-plate_recognizer_token = get_parameter('/LicensePlateRecognition/PlateRecognizerToken')
-ses_sender_email = get_parameter('/LicensePlateRecognition/SESSenderEmail')
-ses_email_notification_to = get_parameter('/LicensePlateRecognition/SESEmailNotificationTo')
-twilio_account_sid = get_parameter('/LicensePlateRecognition/TwilioAccountSID')
-twilio_auth_token = get_parameter('/LicensePlateRecognition/TwilioAuthToken')
-twilio_from_phone_number = get_parameter('/LicensePlateRecognition/TwilioFromPhoneNumber')
-twilio_to_phone_number = get_parameter('/LicensePlateRecognition/TwilioToPhoneNumber')
-s3_bucket_name = get_parameter('/LicensePlateRecognition/S3BucketName')
-s3_file_key = get_parameter('/LicensePlateRecognition/S3FileKey')
-fuzzy_match_threshold = int(get_parameter('/LicensePlateRecognition/FuzzyMatchThreshold'))
-
-# Temporary for debugging
-logging.info(f'SES Sender Email: {ses_sender_email}')
-logging.info(f'SES Email Notification To: {ses_email_notification_to}')
-logging.info(f'Twilio Account SID: {twilio_account_sid}')
-logging.info(f'Twilio From Phone Number: {twilio_from_phone_number}')
-logging.info(f'Twilio To Phone Number: {twilio_to_phone_number}')
-logging.info(f'S3 Bucket Name: {s3_bucket_name}')
-logging.info(f'S3 File Key: {s3_file_key}')
-logging.info(f'Fuzzy Match Threshold: {fuzzy_match_threshold}')
-
-# Retrieve CSV content from S3
-def retrieve_csv_from_s3(s3_client, bucket_name, file_key):
-    try:
-        response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
-        csv_content = response['Body'].read().decode('utf-8')
-        return csv_content
-    except Exception as e:
-        logging.error(f'Error retrieving CSV from S3: {str(e)}')
-        return ''
+# ... (Same code as before for retrieving parameters) ...
 
 # Send an email notification using SES with execution time
 def send_email_notification(recipient, subject, message_body, script_start_time):
@@ -75,11 +36,12 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
         # Include explanatory text, script start time, and elapsed time in the email body
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         elapsed_time = time.time() - start_time  # Calculate the elapsed time
+        elapsed_time_formatted = f'{elapsed_time:.1f}'  # Format elapsed time to one decimal place
         message_body_with_time = (
+            f'### Script Start Time: {script_start_time} ###\n\n'
             f'{message_body}\n\n'
-            f'Script Start Time: {script_start_time}\n'
             f'Current Time: {current_time}\n'
-            f'Elapsed Time: {elapsed_time:.2f} seconds'
+            f'Elapsed Time: {elapsed_time_formatted} seconds'
         )
         
         # Send the email with execution time

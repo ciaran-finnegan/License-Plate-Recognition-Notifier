@@ -5,6 +5,7 @@ chardet==5.2.0
 cryptography==41.0.3
 fuzzywuzzy==0.18.0
 pyOpenSSL==23.2.0
+python-Levenshtein==0.12.2  # Added python-Levenshtein
 requests==2.31.0
 simplejson==3.19.1
 twilio==8.7.0
