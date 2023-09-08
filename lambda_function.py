@@ -1,6 +1,7 @@
 import json
 import logging
 import csv
+from PIL import Image
 import io
 import boto3
 import email
@@ -51,7 +52,8 @@ s3_file_key = get_parameter('/LicensePlateRecognition/S3FileKey')
 fuzzy_match_threshold = int(get_parameter('/LicensePlateRecognition/FuzzyMatchThreshold'))
 raw_inbound_email_bucket = get_parameter('/LicensePlateRecognition/RawInboundEmailBucket')  # Ensure this parameter exists in SSM
 
-# Send an email notification using SES with execution time and attachment
+
+# Send an email notification using SES with execution time and a smaller attachment
 def send_email_notification(recipient, subject, message_body, script_start_time):
     try:
         start_time = time.time()  # Record the start time
@@ -76,16 +78,23 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
         # Attach the message body
         msg.attach(MIMEText(message_body_with_time, 'plain'))
 
-        # Attach the file
+        # Open and resize the image
         with open('/tmp/attachment.jpg', 'rb') as attachment_file:
-            attachment = MIMEBase('application', 'octet-stream')
-            attachment.set_payload(attachment_file.read())
-            encoders.encode_base64(attachment)
-            attachment.add_header('Content-Disposition', f'attachment; filename=attachment.jpg')
-            msg.attach(attachment)
+            img = Image.open(attachment_file)
+            img.thumbnail((300, 300))  # Resize the image to fit within a 300x300 pixel box
+            img_byte_array = io.BytesIO()
+            img.save(img_byte_array, format='JPEG')
+            img_data = img_byte_array.getvalue()
+
+        # Attach the resized image
+        attachment = MIMEBase('application', 'octet-stream')
+        attachment.set_payload(img_data)
+        encoders.encode_base64(attachment)
+        attachment.add_header('Content-Disposition', f'attachment; filename=attachment.jpg')
+        msg.attach(attachment)
 
         # Send the email
-        raw_message = base64.b64encode(msg.as_bytes()).decode()
+        raw_message = msg.as_string()
         response = ses_client.send_raw_email(
             Source=ses_sender_email,
             Destinations=[recipient],
@@ -95,6 +104,7 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
         logger.info(f'SES Email sent with execution time and attachment: {response["MessageId"]}')
     except Exception as e:
         logger.error(f'Error sending SES email: {str(e)}')
+
 
 
 # Make a Twilio call to open the gate
