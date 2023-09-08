@@ -2,15 +2,15 @@
 
 ## What does this script do?
 
-This script is designed to automate the process of recognizing vehicle license plates from images attached to incoming emails. It uses the Plate Recognizer API for accurate plate recognition and performs matching against a CSV database of authorized license plates. When a match is found, the script sends email notifications and, if applicable, makes Twilio calls to notify relevant parties.
+This script is designed to automate the process of recognizing vehicle license plates from images attached to incoming emails from CCTV cameras. It uses the Plate Recognizer API for plate recognition and performs matching against a CSV database of authorized license plates. When a match is found, the script sends email notifications and, if applicable, makes Twilio calls to a GSM Gate opening relay device.
 
 ## How does it work?
 
 1. **Email Processing**: The script is triggered by incoming emails with attached images of license plates. It downloads the email content from a designated S3 bucket.
 
-2. **Plate Recognition**: It utilizes the Plate Recognizer API to accurately recognize the license plate number from the attached image.
+2. **Plate Recognition**: It utilizes the Plate Recognizer API to recognize the license plate number from the attached image.
 
-3. **Database Matching**: The script then compares the recognized license plate against a CSV database of authorized license plates. It performs both exact and fuzzy matching to find potential matches.
+3. **Database Matching**: The script then compares the recognized license plate against a CSV database of authorized license plates. Due to the innacuracy of plate recognition it performs both exact and fuzzy matching to find potential matches.
 
 4. **Notifications**: When a match is found:
    - For exact matches: The script sends an email notification to a specified recipient.

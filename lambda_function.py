@@ -176,7 +176,7 @@ def lambda_handler(event, context):
                                     csv_data[key.lower()] = value.lower()
                             
                             # Log the results
-                            logger.info('CSV data:')
+                            logger.info('CSV data for authorised licence plate numbers:')
                             logger.info(csv_data)
                             
                             # Compare the recognized plate to the values in the CSV (including fuzzy matching)
@@ -194,10 +194,10 @@ def lambda_handler(event, context):
                                 # Send an email notification when a match is found
                                 if score == 1.0:
                                     send_email_notification('ciaran.finnegan@gmail.com', f'Exact Match Found for Plate: {plate_recognized}', f'Registered to: {matched_value}')
-                                    make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches
+                                    make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                                 else:
                                     send_email_notification('ciaran.finnegan@gmail.com', f'Fuzzy Match Found for Plate: {plate_recognized}', f'Registered to: {matched_value}')
-                                    make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches
+                                    make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                             else:
                                 logger.info(f'No match found for vehicle license plate number: {plate_recognized}')
                                 
