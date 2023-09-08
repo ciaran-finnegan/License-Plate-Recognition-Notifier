@@ -26,7 +26,16 @@ ses_client = boto3.client('ses')
 # Retrieve sensitive data and configuration parameters from Parameter Store
 ssm_client = boto3.client('ssm')
 
-# ... (Same code as before for retrieving parameters) ...
+# Retrieve parameters from Parameter Store
+plate_recognizer_token = get_parameter('/LicensePlateRecognition/PlateRecognizerToken')
+ses_sender_email = get_parameter('/LicensePlateRecognition/SESSenderEmail')
+ses_email_notification_to = get_parameter('/LicensePlateRecognition/SESEmailNotificationTo')
+twilio_account_sid = get_parameter('/LicensePlateRecognition/TwilioAccountSID')
+twilio_auth_token = get_parameter('/LicensePlateRecognition/TwilioAuthToken')
+twilio_from_phone_number = get_parameter('/LicensePlateRecognition/TwilioFromPhoneNumber')
+s3_bucket_name = getparameter('/LicensePlateRecognition/S3BucketName')
+s3_file_key = get_parameter('/LicensePlateRecognition/S3FileKey')
+fuzzy_match_threshold = int(get_parameter('/LicensePlateRecognition/FuzzyMatchThreshold'))
 
 # Send an email notification using SES with execution time
 def send_email_notification(recipient, subject, message_body, script_start_time):
