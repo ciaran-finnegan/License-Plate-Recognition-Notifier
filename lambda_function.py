@@ -5,12 +5,17 @@ import io
 import boto3
 import email
 import requests
-from twilio.rest import Client  # Import Twilio Client
-from fuzzywuzzy import fuzz  # Import fuzzy string matching
+from twilio.rest import Client
+from fuzzywuzzy import fuzz
+import datetime
+import time
 
 # Configure logging
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Initialize the S3 client
 s3_client = boto3.client('s3')
@@ -27,12 +32,13 @@ def get_parameter(parameter_name):
         response = ssm_client.get_parameter(Name=parameter_name, WithDecryption=True)
         return response['Parameter']['Value']
     except Exception as e:
-        logger.error(f'Error retrieving parameter {parameter_name}: {str(e)}')
+        logging.error(f'Error retrieving parameter {parameter_name}: {str(e)}')
         return None
 
 # Retrieve sensitive data and configuration parameters from Parameter Store
 plate_recognizer_token = get_parameter('/LicensePlateRecognition/PlateRecognizerToken')
 ses_sender_email = get_parameter('/LicensePlateRecognition/SESSenderEmail')
+ses_email_notification_to = get_parameter('/LicensePlateRecognition/SESEmailNotificationTo')
 twilio_account_sid = get_parameter('/LicensePlateRecognition/TwilioAccountSID')
 twilio_auth_token = get_parameter('/LicensePlateRecognition/TwilioAuthToken')
 twilio_from_phone_number = get_parameter('/LicensePlateRecognition/TwilioFromPhoneNumber')
@@ -42,16 +48,14 @@ s3_file_key = get_parameter('/LicensePlateRecognition/S3FileKey')
 fuzzy_match_threshold = int(get_parameter('/LicensePlateRecognition/FuzzyMatchThreshold'))
 
 # Temporary for debugging
-#logger.info(f'Plate Recognizer Token: {plate_recognizer_token}')
-logger.info(f'SES Sender Email: {ses_sender_email}')  
-logger.info(f'Twilio Account SID: {twilio_account_sid}')
-#logger.info(f'Twilio Auth Token: {twilio_auth_token}')
-logger.info(f'Twilio From Phone Number: {twilio_from_phone_number}')
-logger.info(f'Twilio To Phone Number: {twilio_to_phone_number}')
-logger.info(f'S3 Bucket Name: {s3_bucket_name}')
-logger.info(f'S3 File Key: {s3_file_key}')  
-logger.info(f'Fuzzy Match Threshold: {fuzzy_match_threshold}')
-
+logging.info(f'SES Sender Email: {ses_sender_email}')
+logging.info(f'SES Email Notification To: {ses_email_notification_to}')
+logging.info(f'Twilio Account SID: {twilio_account_sid}')
+logging.info(f'Twilio From Phone Number: {twilio_from_phone_number}')
+logging.info(f'Twilio To Phone Number: {twilio_to_phone_number}')
+logging.info(f'S3 Bucket Name: {s3_bucket_name}')
+logging.info(f'S3 File Key: {s3_file_key}')
+logging.info(f'Fuzzy Match Threshold: {fuzzy_match_threshold}')
 
 # Retrieve CSV content from S3
 def retrieve_csv_from_s3(s3_client, bucket_name, file_key):
@@ -60,12 +64,25 @@ def retrieve_csv_from_s3(s3_client, bucket_name, file_key):
         csv_content = response['Body'].read().decode('utf-8')
         return csv_content
     except Exception as e:
-        logger.error(f'Error retrieving CSV from S3: {str(e)}')
+        logging.error(f'Error retrieving CSV from S3: {str(e)}')
         return ''
 
-# Send an email notification using SES
-def send_email_notification(recipient, subject, message_body):
+# Send an email notification using SES with execution time
+def send_email_notification(recipient, subject, message_body, script_start_time):
     try:
+        start_time = time.time()  # Record the start time
+        
+        # Include explanatory text, script start time, and elapsed time in the email body
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        elapsed_time = time.time() - start_time  # Calculate the elapsed time
+        message_body_with_time = (
+            f'{message_body}\n\n'
+            f'Script Start Time: {script_start_time}\n'
+            f'Current Time: {current_time}\n'
+            f'Elapsed Time: {elapsed_time:.2f} seconds'
+        )
+        
+        # Send the email with execution time
         response = ses_client.send_email(
             Source=ses_sender_email,
             Destination={
@@ -77,16 +94,17 @@ def send_email_notification(recipient, subject, message_body):
                 },
                 'Body': {
                     'Text': {
-                        'Data': message_body
+                        'Data': message_body_with_time
                     }
                 }
             }
         )
-        logger.info(f'SES Email sent: {response["MessageId"]}')
+        
+        logging.info(f'SES Email sent with execution time: {response["MessageId"]}')
     except Exception as e:
-        logger.error(f'Error sending SES email: {str(e)}')
+        logging.error(f'Error sending SES email: {str(e)}')
 
-# Make a Twilio call
+# Make a Twilio call to open the gate
 def make_twilio_call(registered_to):
     try:
         twilio_to_number = twilio_to_phone_number  # Replace with the number you want to call
@@ -104,12 +122,13 @@ def make_twilio_call(registered_to):
             twiml=f'<Response><Say>{call_message}</Say></Response>'
         )
         
-        logger.info(f'Twilio call SID: {call.sid}')
+        logging.info(f'Twilio call SID: {call.sid}')
     except Exception as e:
-        logger.error(f'Error making Twilio call: {str(e)}')
+        logging.error(f'Error making Twilio call: {str(e)}')
 
 # Lambda handler function
 def lambda_handler(event, context):
+    script_start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Record the script start time
     try:
         for record in event.get('Records', []):
             # Extract email information from the event record
@@ -117,7 +136,7 @@ def lambda_handler(event, context):
             message_id = ses_event.get('messageId')
             
             # Log the event for inspection
-            logger.info(f'Email Message Id: {message_id}')
+            logging.info(f'Email Message Id: {message_id}')
 
             # Download the email content from the source S3 bucket
             s3_client.download_file('raw-inbound-email-bucket-ai-access', message_id, '/tmp/email.eml')
@@ -145,8 +164,8 @@ def lambda_handler(event, context):
                             
                             # Log the response from Plate Recognizer API
                             response_text = response.text
-                            logger.info(f'Plate Recognizer API Response Status Code: {response.status_code}')
-                            logger.info(f'Plate Recognizer API Response: {response_text}')
+                            logging.info(f'Plate Recognizer API Response Status Code: {response.status_code}')
+                            logging.info(f'Plate Recognizer API Response: {response_text}')
                             
                             # Extract the recognized plate value from the API response
                             plate_recognized = None
@@ -160,7 +179,7 @@ def lambda_handler(event, context):
                                 else:
                                     score = 0.0  # Default score if not found
                             except Exception as e:
-                                logger.error(f'Error extracting recognized plate: {str(e)}')
+                                logging.error(f'Error extracting recognized plate: {str(e)}')
 
                             # Now, retrieve the CSV file from S3 and store its contents in a dictionary
                             csv_content = retrieve_csv_from_s3(s3_client, s3_bucket_name, s3_file_key)
@@ -176,8 +195,8 @@ def lambda_handler(event, context):
                                     csv_data[key.lower()] = value.lower()
                             
                             # Log the results
-                            logger.info('CSV data for authorised licence plate numbers:')
-                            logger.info(csv_data)
+                            logging.info('CSV data for authorised licence plate numbers:')
+                            logging.info(csv_data)
                             
                             # Compare the recognized plate to the values in the CSV (including fuzzy matching)
                             best_match = None
@@ -189,24 +208,27 @@ def lambda_handler(event, context):
 
                             if best_match is not None:
                                 matched_value = csv_data.get(best_match, '')
-                                logger.info(f'Match found for vehicle license plate number: {plate_recognized}, Registered to: {matched_value}')
+                                logging.info(f'Match found for vehicle license plate number: {plate_recognized}, Registered to: {matched_value}')
                                 
                                 # Send an email notification when a match is found
                                 if score == 1.0:
-                                    send_email_notification('ciaran.finnegan@gmail.com', f'Exact Match Found for Plate: {plate_recognized}', f'Registered to: {matched_value}')
+                                    send_email_notification(ses_email_notification_to, f'Gate Opening Alert - Exact Match Found for Plate: {plate_recognized}',
+                                                            f'Registered to: {matched_value}', script_start_time)
                                     make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                                 else:
-                                    send_email_notification('ciaran.finnegan@gmail.com', f'Fuzzy Match Found for Plate: {plate_recognized}', f'Registered to: {matched_value}')
+                                    send_email_notification(ses_email_notification_to, f'Gate Opening Alert - Fuzzy Match Found for Plate: {plate_recognized}',
+                                                            f'Registered to: {matched_value}', script_start_time)
                                     make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                             else:
-                                logger.info(f'No match found for vehicle license plate number: {plate_recognized}')
+                                logging.info(f'No match found for vehicle license plate number: {plate_recognized}')
                                 
-                                # Send an email notification when no match is found
-                                send_email_notification('ciaran.finnegan@gmail.com', f'No Match Found for Plate: {plate_recognized}', 'Vehicle not registered')
+                                # Send an email notification when no match is found for debugging, logging, and alerting purposes
+                                send_email_notification(ses_email_notification_to, f'Failed Gate Opening Alert - No Match Found for Plate: {plate_recognized}',
+                                                        'Vehicle not registered', script_start_time)
 
     except Exception as e:
         # Log the error message
-        logger.error(f'Error: {str(e)}')
+        logging.error(f'Error: {str(e)}')
 
     return {
         'statusCode': 200,
