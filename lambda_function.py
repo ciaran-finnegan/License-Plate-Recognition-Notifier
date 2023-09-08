@@ -56,8 +56,6 @@ raw_inbound_email_bucket = get_parameter('/LicensePlateRecognition/RawInboundEma
 # Send an email notification using SES with execution time and a smaller attachment
 def send_email_notification(recipient, subject, message_body, script_start_time):
     try:
-        start_time = time.time()  # Record the start time
-
         # Include explanatory text, script start time, and elapsed time in the email body
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         elapsed_time = time.time() - start_time  # Calculate the elapsed time
@@ -132,6 +130,7 @@ def make_twilio_call(registered_to):
 # Lambda handler function
 def lambda_handler(event, context):
     script_start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Record the script start time
+    start_time = time.time()  # Record the start time
     try:
         for record in event.get('Records', []):
             # Extract email information from the event record
