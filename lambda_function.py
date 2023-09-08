@@ -20,10 +20,10 @@ s3_client = boto3.client('s3')
 # Initialize the SES client
 ses_client = boto3.client('ses')
 
-# Retrieve sensitive data and configuration parameters from Parameter Store
+# Initialize the SSM client
 ssm_client = boto3.client('ssm')
 
-# Retrieve sensitive data from Parameter Store
+# Retrieve sensitive data and configuration parameters from Parameter Store
 def get_parameter(parameter_name):
     try:
         response = ssm_client.get_parameter(Name=parameter_name, WithDecryption=True)
@@ -39,10 +39,11 @@ ses_email_notification_to = get_parameter('/LicensePlateRecognition/SESEmailNoti
 twilio_account_sid = get_parameter('/LicensePlateRecognition/TwilioAccountSID')
 twilio_auth_token = get_parameter('/LicensePlateRecognition/TwilioAuthToken')
 twilio_from_phone_number = get_parameter('/LicensePlateRecognition/TwilioFromPhoneNumber')
-s3_bucket_name_parameter = get_parameter('/LicensePlateRecognition/S3BucketName')
+twilio_to_phone_number = get_parameter('/LicensePlateRecognition/TwilioToPhoneNumber')  # Retrieve Twilio To phone number from SSM
+s3_bucket_name = get_parameter('/LicensePlateRecognition/S3BucketName')
 s3_file_key = get_parameter('/LicensePlateRecognition/S3FileKey')
 fuzzy_match_threshold = int(get_parameter('/LicensePlateRecognition/FuzzyMatchThreshold'))
-raw_inbound_email_bucket = get_parameter('/LicensePlateRecognition/RawInboundEmailBucket')
+raw_inbound_email_bucket = get_parameter('/LicensePlateRecognition/RawInboundEmailBucket')  # Ensure this parameter exists in SSM
 
 # Send an email notification using SES with execution time
 def send_email_notification(recipient, subject, message_body, script_start_time):
@@ -85,7 +86,7 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
 # Make a Twilio call to open the gate
 def make_twilio_call(registered_to):
     try:
-        twilio_to_number = twilio_to_phone_number  # Replace with the number you want to call
+        twilio_to_number = twilio_to_phone_number  # Retrieve Twilio To phone number from SSM
         twilio_from_number = twilio_from_phone_number
         
         # Customize your call message
@@ -160,7 +161,7 @@ def lambda_handler(event, context):
                                 logger.error(f'Error extracting recognized plate: {str(e)}')
 
                             # Now, retrieve the CSV file from S3 and store its contents in a dictionary
-                            csv_content = retrieve_csv_from_s3(s3_client, s3_bucket_name, s3_file_key)
+                            csv_content = s3_client.get_object(Bucket=s3_bucket_name, Key=s3_file_key)['Body'].read().decode('utf-8')
                             
                             # Initialize an empty dictionary to store the CSV data
                             csv_data = {}
