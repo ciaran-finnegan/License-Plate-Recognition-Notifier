@@ -74,6 +74,7 @@ Upload a CSV file to an Amazon S3 bucket containing the authorized license plate
 "XYZ789", "Jane Smith", "Blue", "Honda", "Civic"
 "DEF456", "Bob Johnson", "Silver", "Ford", "Focus"
 "GHI789", "Alice Brown", "Black", "Chevrolet", "Malibu"
+```
 
 4. **Deployment**:
    - Create an AWS Lambda function and upload this code.
