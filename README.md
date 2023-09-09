@@ -8,6 +8,27 @@ The License Plate Recognition Gate Control System automates the recognition of v
 
 ## How It Works
 
+```mermaid
+sequenceDiagram
+    participant User
+    participant Camera as "CCTV Camera"
+    participant EmailServer as "Email Server"
+    participant PlateRecognizer as "License Plate Recognition System"
+    participant Database as "CSV Database"
+    participant Twilio
+    participant GateRelay as "GSM Gate Opening Relay"
+
+    User ->> Camera: Capture vehicle image
+    Camera ->> EmailServer: Send email with image
+    EmailServer ->> PlateRecognizer: Receive email with image
+    PlateRecognizer ->> Database: Match license plate
+    Database -->> PlateRecognizer: License plate details
+    PlateRecognizer -->> User: Send license plate details
+    PlateRecognizer -->> Twilio: Send match notification
+    Twilio -->> GateRelay: Open gate for authorized vehicle
+    Twilio -->> User: Send match notification
+```
+
 1. **Email Processing**: The system is triggered by incoming emails with attached images of license plates. It downloads the email content from a designated S3 bucket.
 
 2. **Plate Recognition**: It utilizes the Plate Recognizer API to recognize the license plate number from the attached image.
