@@ -1,7 +1,5 @@
 # License Plate Recognition Gate Control System
 
-![Gate Control System](https://your-github-repo-url.com/path/to/your/image.png)
-
 ## Overview
 
 The License Plate Recognition Gate Control System automates the recognition of vehicle license plates from images attached to incoming emails from CCTV cameras. It uses the Plate Recognizer API for plate recognition and performs matching against a CSV database of authorized license plates. When a match is found, the system sends email notifications and, if applicable, makes Twilio calls to a GSM Gate Opening Relay device to grant access to authorized vehicles.
