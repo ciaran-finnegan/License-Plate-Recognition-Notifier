@@ -23,7 +23,8 @@ The License Plate Recognition Gate Control System automates the recognition of v
 ## How to Install and Update
 
 1. **Dependencies**:
-   - Ensure you have the necessary AWS credentials configured, including SES (Simple Email Service) and S3 (Simple Storage Service).
+   - Ensure you have the necessary AWS credentials configured and services configured, refer to sample policy file 'sample_aws_policy.json' for AWS lambda.
+   - 
    - Set up a Plate Recognizer API token for plate recognition.
    - Create a Twilio account and obtain the required credentials (Account SID and Auth Token).
 
