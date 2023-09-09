@@ -83,7 +83,7 @@ def send_email_notification(recipient, subject, message_body, script_start_time)
         # Open and resize the image
         with open('/tmp/attachment.jpg', 'rb') as attachment_file:
             img = Image.open(attachment_file)
-            img.thumbnail((300, 300))  # Resize the image to fit within a 300x300 pixel box
+            img.thumbnail((600, 600))  # Resize the image to fit within a 300x300 pixel box
             img_byte_array = io.BytesIO()
             img.save(img_byte_array, format='JPEG')
             img_data = img_byte_array.getvalue()
@@ -219,17 +219,17 @@ def lambda_handler(event, context):
                                 if score == 1.0:
                                     make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                                     send_email_notification(ses_email_notification_to, f'Gate Opening Alert - Exact Match Found for Plate: {plate_recognized}',
-                                                            f'Registered to: {matched_value}', script_start_time)
+                                                            f'Exact match, licence plate number {plate_recognized} is registered to: {matched_value}', script_start_time)
                                 else:
                                     make_twilio_call(matched_value)  # Make a Twilio call for both exact and fuzzy matches to open the gate
                                     send_email_notification(ses_email_notification_to, f'Gate Opening Alert - Fuzzy Match Found for Plate: {plate_recognized}',
-                                                            f'Registered to: {matched_value}', script_start_time)
+                                                            f'Fuzzy match, licence plate number {plate_recognized}is registered to: {matched_value}', script_start_time)
                             else:
                                 logger.info(f'No match found for vehicle license plate number: {plate_recognized}')
                                 
                                 # Send an email notification when no match is found for debugging, logging, and alerting purposes
                                 send_email_notification(ses_email_notification_to, f'Failed Gate Opening Alert - No Match Found for Plate: {plate_recognized}',
-                                                        'Vehicle not registered', script_start_time)
+                                                        f'No match found or vehicle not registered for licence plate number: {plate_recognized}', script_start_time)
 
     except Exception as e:
         # Log the error message
