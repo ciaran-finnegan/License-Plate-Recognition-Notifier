@@ -41,7 +41,7 @@ The License Plate Recognition Gate Control System automates the recognition of v
      - `s3_file_key`: The key (path) to the CSV file containing authorized license plates.
      - `fuzzy_match_threshold`: Threshold for fuzzy matching (adjust as needed).
 
-3. Upload CSV Database
+3. **Upload CSV Database
 
 Upload a CSV file to an Amazon S3 bucket containing the authorized license plate numbers and their corresponding vehicle owners' information. Here's an example CSV file with anonymized data:
 
@@ -63,6 +63,15 @@ Upload a CSV file to an Amazon S3 bucket containing the authorized license plate
 6. **Updates**:
    - To update the code, modify the Lambda function with the latest code.
    - Ensure your dependencies and configurations remain up-to-date.
+
+## Automated Deployments with GitHub Actions
+
+To automate deployments, you can use GitHub Actions you can use the supplied GitHub Actions workflow file (e.g., .github/workflows/deploy-lambda.yml), you will need to configure the following GitHub secrets
+
+AWS_REGION:
+AWS_ACCESS_KEY_ID: 
+AWS_SECRET_ACCESS_KEY:
+
 
 ## Conclusion
 
