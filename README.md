@@ -16,7 +16,7 @@ sequenceDiagram
     participant Twilio
     participant GateRelay as "GSM Gate Opening Relay"
 
-    User ->> Camera: Capture vehicle image
+    Camera ->> EmailServer: Capture vehicle image
     Camera ->> EmailServer: Send email with image
     EmailServer ->> PlateRecognizer: Receive email with image
     PlateRecognizer ->> Database: Match license plate
@@ -33,8 +33,7 @@ sequenceDiagram
 
 3. **Database Matching**: The system then compares the recognized license plate against a CSV database of authorized license plates. Due to the inaccuracy of plate recognition, it performs both exact and fuzzy matching to find potential matches.
 
-4. **Notifications**: When a match is found:
-   - For both exact and fuzzy matches: It also makes a Twilio call to a GSM Gate Opening relay device phone number which can open a gate. An email with a thumbnail image attachment is also sent to a defined email recipient.
+4. **Notifications**: When an exact or fuzz match is found, a phone call is placed to a GSM Gate Opening relay device phone number using the Twillio API which can open a gate, unlock a door etc. An email with a thumbnail image attachment is also sent to a defined email recipient.
 
 5. **Logging**: The system logs its actions and any errors to AWS Cloudwatch logs which can be used for troubleshooting.
 
