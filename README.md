@@ -42,7 +42,7 @@ sequenceDiagram
 ## How to Install and Update
 
 1. **Dependencies**:
-   - Ensure you have the necessary AWS credentials configured and services configured, refer to sample policy file 'sample_aws_policy.json' for AWS lambda.
+   - Ensure you have the necessary AWS services, credentials and permissions configured (you'll need to be reasonably proficient using AWS), refer to sample policy file 'sample_aws_policy.json' for AWS lambda.
    - Create a Plate Recognizer account and obtain an API token for plate recognition.
    - Create a Twilio account and obtain the required credentials (Account SID and Auth Token).
    - Setup a GSM Gate Opener relay device and associated phone number e.g.
