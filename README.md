@@ -4,6 +4,9 @@
 
 The License Plate Recognition Gate Control System automates the recognition of vehicle license plates from images attached to incoming emails from CCTV cameras. It uses the Plate Recognizer API for plate recognition and performs matching against a CSV database of authorized license plates. When a match is found, the system sends email notifications and, if applicable, makes Twilio calls to a GSM Gate Opening Relay device to grant access to authorized vehicles.
 
+## Version
+Working prototype, enhancements may be required to increase reliablity, use at your own risk.
+
 ## How It Works
 
 ```mermaid
@@ -88,14 +91,14 @@ Upload a CSV file to an Amazon S3 bucket containing the authorized license plate
 
 To automate deployments, you can use GitHub Actions you can use the supplied GitHub Actions workflow file (e.g., .github/workflows/deploy-lambda.yml), you will need to configure the following GitHub secrets
 
-AWS_REGION:
-AWS_ACCESS_KEY_ID: 
-AWS_SECRET_ACCESS_KEY:
+- AWS_REGION:
+- AWS_ACCESS_KEY_ID: 
+- AWS_SECRET_ACCESS_KEY:
 
 
 ## Conclusion
 
-That's it! You now have an automated License Plate Recognition Gate Control System to enhance your security and notification systems. Feel free to customize and adapt the system to your specific use case and requirements.
+That's it! You now have an automated License Plate Recognition Gate Control System. Feel free to customise and adapt the system to your specific use case and requirements.
 
 For more details and technical information, refer to the code and documentation in this GitHub repository.
 
