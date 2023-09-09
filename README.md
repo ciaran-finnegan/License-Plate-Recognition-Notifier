@@ -15,18 +15,19 @@ The License Plate Recognition Gate Control System automates the recognition of v
 3. **Database Matching**: The system then compares the recognized license plate against a CSV database of authorized license plates. Due to the inaccuracy of plate recognition, it performs both exact and fuzzy matching to find potential matches.
 
 4. **Notifications**: When a match is found:
-   - For exact matches: The system sends an email notification to a specified recipient.
-   - For both exact and fuzzy matches: It also makes a Twilio call to a predefined phone number for immediate notification.
+   - For both exact and fuzzy matches: It also makes a Twilio call to a GSM Gate Opening relay device phone number which can open a gate. An email with a thumbnail image attachment is also sent to a defined email recipient.
 
-5. **Logging**: The system logs its actions and any errors for troubleshooting.
+5. **Logging**: The system logs its actions and any errors to AWS Cloudwatch logs which can be used for troubleshooting.
 
 ## How to Install and Update
 
 1. **Dependencies**:
    - Ensure you have the necessary AWS credentials configured and services configured, refer to sample policy file 'sample_aws_policy.json' for AWS lambda.
-   - 
-   - Set up a Plate Recognizer API token for plate recognition.
+   - Create a Plate Recognizer account and obtain an API token for plate recognition.
    - Create a Twilio account and obtain the required credentials (Account SID and Auth Token).
+   - Setup a GSM Gate Opener relay device and associated phone number e.g.
+     - http://rtu5024.com
+     - https://gatesim.ie/
 
 2. **Configuration**:
    - Set up an AWS Lambda function with this code.
