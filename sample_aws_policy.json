@@ -1,0 +1,53 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::authorised-licence-plates",
+                "arn:aws:s3:::authorised-licence-plates/*",
+                "arn:aws:s3:::raw-inbound-email-bucket-ai-access",
+                "arn:aws:s3:::raw-inbound-email-bucket-ai-access/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ses:SendRawEmail"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:*:*:*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:GetParameter"
+            ],
+            "Resource": [
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/PlateRecognizerToken",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/SESSenderEmail",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/SESEmailNotificationTo",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/TwilioAccountSID",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/TwilioAuthToken",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/TwilioFromPhoneNumber",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/TwilioToPhoneNumber",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/S3BucketName",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/S3FileKey",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/FuzzyMatchThreshold",
+                "arn:aws:ssm:<Region>:<Account-ID>:parameter/LicensePlateRecognition/RawInboundEmailBucket"
+            ]
+        }
+    ]
+}
