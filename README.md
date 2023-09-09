@@ -16,8 +16,7 @@ sequenceDiagram
     participant Twilio
     participant GateRelay as "GSM Gate Opening Relay"
 
-    Camera ->> EmailServer: Capture vehicle image
-    Camera ->> EmailServer: Send email with image
+    Camera ->> EmailServer: Send email with vehnicl licence plate image
     EmailServer ->> PlateRecognizer: Receive email with image
     PlateRecognizer ->> Database: Match license plate
     Database -->> PlateRecognizer: License plate details
