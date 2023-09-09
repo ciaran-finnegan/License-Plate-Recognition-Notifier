@@ -89,7 +89,7 @@ Upload a CSV file to an Amazon S3 bucket containing the authorized license plate
 
 ## Automated Deployments with GitHub Actions
 
-To automate deployments, you can use GitHub Actions you can use the supplied GitHub Actions workflow file (e.g., .github/workflows/deploy-lambda.yml), you will need to configure the following GitHub secrets
+To automate deployments withGitHub Actions you can use the supplied GitHub Actions workflow file (.github/workflows/deploy-lambda.yml), you will need to configure the following GitHub secrets
 
 - AWS_REGION:
 - AWS_ACCESS_KEY_ID: 
