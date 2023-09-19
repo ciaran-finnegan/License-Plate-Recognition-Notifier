@@ -51,7 +51,7 @@ sequenceDiagram
 
 2. **Configuration**:
    - Set up an AWS Lambda function with this code.
-   - Configure the following parameters at the top of the script:
+   - Configure the following parameters in the AWS SSM Parameter Store:
      - `plate_recognizer_token`: Your Plate Recognizer API token.
      - `ses_sender_email`: Your SES sender email address.
      - `ses_email_notification_to`: The email address where notifications will be sent.
@@ -62,6 +62,20 @@ sequenceDiagram
      - `s3_bucket_name`: The name of your S3 bucket containing authorized license plates.
      - `s3_file_key`: The key (path) to the CSV file containing authorized license plates.
      - `fuzzy_match_threshold`: Threshold for fuzzy matching (adjust as needed).
+
+```
+plate_recognizer_token = get_parameter('/LicensePlateRecognition/PlateRecognizerToken')
+ses_sender_email = get_parameter('/LicensePlateRecognition/SESSenderEmail')
+ses_email_notification_to = get_parameter('/LicensePlateRecognition/SESEmailNotificationTo')
+twilio_account_sid = get_parameter('/LicensePlateRecognition/TwilioAccountSID')
+twilio_auth_token = get_parameter('/LicensePlateRecognition/TwilioAuthToken')
+twilio_from_phone_number = get_parameter('/LicensePlateRecognition/TwilioFromPhoneNumber')
+twilio_to_phone_number = get_parameter('/LicensePlateRecognition/TwilioToPhoneNumber')  # Retrieve Twilio To phone number from SSM
+s3_bucket_name = get_parameter('/LicensePlateRecognition/S3BucketName')
+s3_file_key = get_parameter('/LicensePlateRecognition/S3FileKey')
+fuzzy_match_threshold = int(get_parameter('/LicensePlateRecognition/FuzzyMatchThreshold'))
+raw_inbound_email_bucket = get_parameter('/LicensePlateRecognition/RawInboundEmailBucket')
+```
 
 3. **Upload CSV Database
 
@@ -95,6 +109,7 @@ To automate deployments withGitHub Actions you can use the supplied GitHub Actio
 - AWS_ACCESS_KEY_ID: 
 - AWS_SECRET_ACCESS_KEY:
 
+(Note, this approach is not recommended for production, the Access Key should be associated with an IAM User that has limited permissions. Refer to [this](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services) link for details on how to Use OpenID Connect within your workflows to authenticate with Amazon Web Services which is more suited to a production implementation.
 
 ## Conclusion
 
@@ -102,7 +117,7 @@ That's it! You now have an automated License Plate Recognition Gate Control Syst
 
 For more details and technical information, refer to the code and documentation in this GitHub repository.
 
-*Note: This README is intended for non-technical readers. For detailed technical documentation and code, refer to the GitHub repository.*
+*Note: This README is intended to provide a high level overview, for detailed technical documentation refer to the code or create an issue or ask a question in the wiki.*
 
 **Maintained by: Ciaran Finnegan**
 **Contact: https://github.com/ciaran-finnegan**
