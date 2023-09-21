@@ -2,7 +2,7 @@ boto3==1.28.7
 brotli==1.0.9
 brotlicffi==1.0.9.2
 chardet==5.2.0
-cryptography==41.0.3
+cryptography==41.0.4
 fuzzywuzzy==0.18.0
 pyOpenSSL==23.2.0
 python-Levenshtein==0.12.2  # Added python-Levenshtein
