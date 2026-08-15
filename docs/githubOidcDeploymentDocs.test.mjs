@@ -5,38 +5,115 @@ import test from 'node:test';
 const guidePath = new URL('./github-oidc-deployment.md', import.meta.url);
 const readmePath = new URL('../README.md', import.meta.url);
 
-test('OIDC deployment guide contains the complete trust and permission policies', async () => {
+function parseJsonPolicyBlocks(markdown) {
+  return [...markdown.matchAll(/```json\n([\s\S]*?)\n```/g)].map((match) =>
+    JSON.parse(match[1]),
+  );
+}
+
+test('OIDC deployment guide documents creating the GitHub IAM provider when absent', async () => {
   const guide = await readFile(guidePath, 'utf8');
 
-  assert.match(guide, /repo:OWNER\/REPOSITORY:environment:production/);
-  assert.match(guide, /token\.actions\.githubusercontent\.com:aud/);
-  assert.match(guide, /"sts\.amazonaws\.com"/);
-  assert.match(guide, /token\.actions\.githubusercontent\.com:sub/);
-  assert.match(guide, /arn:aws:iam::<AWS_ACCOUNT_ID>:oidc-provider\/token\.actions\.githubusercontent\.com/);
-  assert.match(guide, /sts:AssumeRoleWithWebIdentity/);
-  assert.match(guide, /lambda:UpdateFunctionCode/);
-  assert.match(guide, /arn:aws:lambda:<AWS_REGION>:<AWS_ACCOUNT_ID>:function:<LAMBDA_FUNCTION_NAME>/);
-  assert.match(guide, /AWS account ID/);
-  assert.match(guide, /role name/);
-  assert.match(guide, /region/);
-  assert.match(guide, /Lambda function name/);
+  assert.match(guide, /create the GitHub IAM OIDC provider/i);
+  assert.match(guide, /if .*provider.*(?:is )?absent/i);
+  assert.match(guide, /issuer(?: URL)?: `https:\/\/token\.actions\.githubusercontent\.com`/i);
+  assert.match(guide, /audience(?: \(client ID\))?: `sts\.amazonaws\.com`/i);
 });
 
-test('OIDC deployment guide covers setup, retirement, validation, and rollback', async () => {
+test('OIDC policy templates parse and enforce the exact trust and Lambda scope', async () => {
   const guide = await readFile(guidePath, 'utf8');
+  const policies = parseJsonPolicyBlocks(guide);
 
-  assert.match(guide, /GitHub environment/i);
-  assert.match(guide, /AWS_ROLE_ARN/);
-  assert.match(guide, /AWS_REGION/);
-  assert.match(guide, /AWS_LAMBDA_FUNCTION_NAME/);
-  assert.match(guide, /delete|deletion/i);
-  assert.match(guide, /AWS_ACCESS_KEY_ID/);
-  assert.match(guide, /AWS_SECRET_ACCESS_KEY/);
-  assert.match(guide, /CloudTrail/i);
-  assert.match(guide, /disable.*workflow|workflow.*disable/i);
-  assert.match(guide, /prior.*Lambda.*code version|Lambda.*code version.*prior/i);
-  assert.match(guide, /does not restore static|static.*key.*back/i);
+  assert.equal(policies.length, 2);
+  const [trustPolicy, permissionPolicy] = policies;
+  assert.equal(trustPolicy.Version, '2012-10-17');
+  assert.equal(trustPolicy.Statement.length, 1);
+
+  const trustStatement = trustPolicy.Statement[0];
+  assert.deepEqual(trustStatement.Principal, {
+    Federated:
+      'arn:aws:iam::<AWS_ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com',
+  });
+  assert.equal(trustStatement.Action, 'sts:AssumeRoleWithWebIdentity');
+  assert.deepEqual(trustStatement.Condition, {
+    StringEquals: {
+      'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
+      'token.actions.githubusercontent.com:sub':
+        'repo:OWNER/REPOSITORY:environment:production',
+    },
+  });
+
+  assert.equal(permissionPolicy.Version, '2012-10-17');
+  assert.equal(permissionPolicy.Statement.length, 1);
+  const permissionStatement = permissionPolicy.Statement[0];
+  const actions = Array.isArray(permissionStatement.Action)
+    ? permissionStatement.Action
+    : [permissionStatement.Action];
+  const resources = Array.isArray(permissionStatement.Resource)
+    ? permissionStatement.Resource
+    : [permissionStatement.Resource];
+
+  assert.deepEqual(actions, ['lambda:UpdateFunctionCode']);
+  assert.deepEqual(resources, [
+    'arn:aws:lambda:<AWS_REGION>:<AWS_ACCOUNT_ID>:function:<LAMBDA_FUNCTION_NAME>',
+  ]);
+  assert.ok(resources.every((resource) => !resource.includes('*')));
+});
+
+test('OIDC deployment guide separates initial validation, key retirement, and post-retirement validation', async () => {
+  const guide = await readFile(guidePath, 'utf8');
+  const initialValidationIndex = guide.indexOf(
+    '## 5. Initial OIDC deployment validation',
+  );
+  const retirementIndex = guide.indexOf('## 6. Retire the static keys');
+  const postRetirementIndex = guide.indexOf(
+    '## 7. Post-retirement validation',
+  );
+  const rollbackIndex = guide.indexOf('## 8. Break-glass rollback');
+
+  assert.ok(initialValidationIndex >= 0);
+  assert.ok(retirementIndex > initialValidationIndex);
+  assert.ok(postRetirementIndex > retirementIndex);
+  assert.ok(rollbackIndex > postRetirementIndex);
+
+  const initialValidation = guide.slice(
+    initialValidationIndex,
+    retirementIndex,
+  );
+  const retirement = guide.slice(retirementIndex, postRetirementIndex);
+  const postRetirement = guide.slice(postRetirementIndex, rollbackIndex);
+
+  assert.match(initialValidation, /CloudTrail/i);
+  assert.doesNotMatch(
+    initialValidation,
+    /\[[ x]\].*old static access keys are (?:deleted|deactivated)/i,
+  );
+  assert.match(retirement, /deactivate|delete/i);
+  assert.match(postRetirement, /second.*deployment/i);
+  assert.match(postRetirement, /CloudTrail/i);
+  assert.match(postRetirement, /record.*(?:run URL|event ID)/i);
   assert.match(guide, /remains unmerged until every checklist item passes/i);
+});
+
+test('OIDC deployment guide gives an executable retained-artifact rollback', async () => {
+  const guide = await readFile(guidePath, 'utf8');
+  const rollbackIndex = guide.indexOf('## 8. Break-glass rollback');
+  const rollback = guide.slice(rollbackIndex);
+
+  assert.ok(rollbackIndex >= 0);
+  assert.match(rollback, /retained.*deployment-package\.zip/i);
+  assert.match(rollback, /retention/i);
+  assert.match(rollback, /operator.*permission/i);
+  assert.match(rollback, /OIDC role/i);
+  assert.match(
+    rollback,
+    /aws lambda update-function-code \\\n+\s+--function-name "<LAMBDA_FUNCTION_NAME>" \\\n+\s+--zip-file fileb:\/\/deployment-package\.zip \\\n+\s+--region "<AWS_REGION>"/,
+  );
+  assert.match(
+    rollback,
+    /old (?:published )?version does not\s+restore\s+`\$LATEST`/i,
+  );
+  assert.match(rollback, /does not\s+restore static|static.*key.*back/is);
 });
 
 test('README directs operators to OIDC deployment documentation and removes static-key setup', async () => {

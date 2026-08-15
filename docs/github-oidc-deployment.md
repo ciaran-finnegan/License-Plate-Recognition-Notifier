@@ -37,7 +37,21 @@ the workflow is allowed to update:
 arn:aws:lambda:<AWS_REGION>:<AWS_ACCOUNT_ID>:function:<LAMBDA_FUNCTION_NAME>
 ```
 
-## 1. Create the OIDC trust policy
+## 1. Create the GitHub IAM OIDC provider
+
+In the AWS account, open IAM **Identity providers** and look for
+`token.actions.githubusercontent.com`. If the provider is absent, create the
+GitHub IAM OIDC provider with these exact values:
+
+- Issuer URL: `https://token.actions.githubusercontent.com`
+- Audience (client ID): `sts.amazonaws.com`
+
+If the provider already exists, verify that its URL and audience match those
+values before continuing. Reuse the account-level provider rather than creating
+a duplicate. Record its provider ARN; it must be
+`arn:aws:iam::<AWS_ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com`.
+
+## 2. Create the OIDC trust policy
 
 Configure the AWS IAM role's trust relationship with this complete policy.
 The `sub` condition restricts assumption to this repository's `production`
@@ -57,9 +71,7 @@ not match the subject.
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
           "token.actions.githubusercontent.com:sub": "repo:OWNER/REPOSITORY:environment:production"
         }
       }
@@ -75,7 +87,7 @@ Confirm that the IAM OIDC provider is exactly
 repository and environment restriction is intentional: keep it exact rather
 than widening it to all branches or all environments.
 
-## 2. Attach the deployment permission policy
+## 3. Attach the deployment permission policy
 
 Attach this complete permissions policy to the role named by `<ROLE_NAME>`.
 It grants only the Lambda code update used by
@@ -104,7 +116,7 @@ actions to this deployment role. If the workflow later needs a new AWS API,
 review and change the policy deliberately rather than broadening it during a
 deployment incident.
 
-## 3. Configure the GitHub `production` environment
+## 4. Configure the GitHub `production` environment
 
 In the repository's `production` environment, configure these **variables**:
 
@@ -124,27 +136,23 @@ deployment credentials. OIDC exchanges the short-lived GitHub token for a
 short-lived AWS role session, so no static AWS key is needed in repository or
 environment secrets.
 
-## 4. Retire the static keys
+Before approving this migration, require the release process to retain the
+exact `deployment-package.zip` and its SHA-256 digest from every successful
+deployment in an approved immutable artifact store. Its retention period must
+cover the organization's production rollback window. The current deployment
+workflow builds the ZIP but does not itself upload it, so rollback is not ready
+until an operator has verified that the artifact is retained elsewhere and can
+be downloaded by immutable workflow run ID and commit SHA.
 
-Retire the old deployment identity only after the first OIDC deployment has
-passed the validation section below.
+## 5. Initial OIDC deployment validation
 
-1. Identify the IAM user and access keys previously used by GitHub Actions.
-2. Confirm the workflow and the `production` environment contain no
-   `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` values.
-3. Disable the old access keys, observe the next validation run, and then
-   delete the keys. Delete both keys if the old user has two active keys.
-4. Record the IAM user, key IDs, deletion time, and validation run URL in the
-   change record. Do not delete the OIDC deployment role.
+Perform this initial validation while the old IAM access keys still exist. The
+workflow must not reference or consume them; their temporary presence only
+preserves the ability to investigate before retirement.
 
-If the first OIDC validation fails, leave the old keys disabled and use the
-break-glass rollback below. Do not put the static keys back into the workflow
-or GitHub environment while troubleshooting.
-
-## 5. First-deploy validation checklist
-
-Run the deployment from the intended `main` change and capture the workflow
-run URL, deployed commit SHA, Lambda function name, and AWS region.
+Run the deployment from the intended commit and capture the workflow run URL,
+deployed commit SHA, Lambda function name, AWS region, retained artifact ID,
+and artifact SHA-256 digest.
 
 - [ ] The PR is still unmerged while this checklist is incomplete.
 - [ ] The GitHub job is attached to the `production` environment.
@@ -152,50 +160,114 @@ run URL, deployed commit SHA, Lambda function name, and AWS region.
       the intended values.
 - [ ] The job receives an OIDC token and the credentials action assumes the
       expected role; no static AWS key step runs.
-- [ ] The deployment completes with `lambda:UpdateFunctionCode` and the
+- [ ] The deployment completes with `lambda:UpdateFunctionCode` against the
       intended single Lambda ARN.
-- [ ] The Lambda code version or deployed commit matches the workflow commit.
+- [ ] The deployed code and retained `deployment-package.zip` correspond to the
+      recorded workflow commit and artifact digest.
 - [ ] A test invocation or the normal event path produces the expected
       Notifier behavior and CloudWatch logs contain no deployment error.
 - [ ] CloudTrail shows `AssumeRoleWithWebIdentity` for the expected role,
       principal subject `repo:OWNER/REPOSITORY:environment:production`, and
-      the expected GitHub Actions session. CloudTrail must not show the retired
-      static user performing this deployment.
-- [ ] The old static access keys are deleted and the evidence is recorded.
+      session `github-actions-lambda-deploy`.
+- [ ] CloudTrail attributes `UpdateFunctionCode` to that assumed-role session,
+      not to the IAM user that owns the old static keys.
+- [ ] The initial workflow URL, CloudTrail event IDs, test evidence, and
+      artifact details are recorded in the change record.
+
+Do not retire any old keys until every initial validation item passes. If one
+fails, stop promotion, preserve the evidence, and correct the OIDC or artifact
+configuration before repeating this section.
+
+## 6. Retire the static keys
+
+After the initial OIDC deployment and CloudTrail evidence pass:
+
+1. Identify the IAM user and access keys previously used by GitHub Actions.
+2. Confirm the workflow and the `production` environment contain no
+   `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` values.
+3. Deactivate every old access key. If policy requires immediate deletion,
+   delete the keys instead; cover both keys if the old user has two.
+4. Record the IAM user, key IDs, retirement action, and timestamp in the change
+   record. Do not delete the OIDC deployment role.
+
+Do not reactivate or recreate static keys if the next validation fails. Use the
+OIDC artifact rollback in the break-glass section.
+
+## 7. Post-retirement validation
+
+After the old keys are deactivated or deleted, run a second deployment through
+the same OIDC workflow and validate the application again.
+
+- [ ] The second deployment succeeds while every old access key remains
+      deactivated or deleted.
+- [ ] A test invocation or the normal event path produces the expected
+      Notifier behavior and CloudWatch logs contain no deployment error.
+- [ ] CloudTrail shows `AssumeRoleWithWebIdentity` for the expected role,
+      principal subject `repo:OWNER/REPOSITORY:environment:production`, and
+      session `github-actions-lambda-deploy` for the second run.
+- [ ] CloudTrail attributes the second `UpdateFunctionCode` event to that
+      assumed-role session and shows no use of the retired IAM user.
+- [ ] Record the second workflow run URL, commit SHA, CloudTrail event IDs,
+      test evidence, and access-key retirement timestamp.
+- [ ] Permanently delete any old key that was only deactivated, then record its
+      deletion time. Do not perform another deployment with that key.
 
 The PR remains unmerged until every checklist item passes. If any item fails,
-stop promotion, preserve the evidence, and use the rollback procedure.
+stop promotion, preserve the initial and post-retirement evidence, and use the
+rollback procedure without restoring static keys.
 
-## 6. Break-glass rollback
+## 8. Break-glass rollback
 
-Rollback restores a known-good Lambda code version; it does not restore static
-AWS keys.
+Rollback redeploys the exact retained, known-good ZIP to `$LATEST`; it does not
+restore static AWS keys. Selecting an old published version does not restore
+`$LATEST`, because published Lambda versions are immutable. Do not pass a
+version qualifier to `update-function-code`.
+
+The rollback operator must have permission to disable and dispatch repository
+Actions workflows, read the retained artifact, and approve the `production`
+environment. The OIDC role must retain only the documented
+`lambda:UpdateFunctionCode` permission on the named Lambda ARN. Run the AWS
+command inside an approved GitHub Actions rollback job that has
+`id-token: write`, uses `environment: production`, and assumes the same OIDC
+role through `aws-actions/configure-aws-credentials`.
 
 1. Disable the `Deploy Python Lambda Function` workflow in GitHub Actions to
    prevent further automatic deployments while the incident is investigated.
 2. Record the failed run URL, commit SHA, Lambda function name, region, and
    relevant CloudTrail and CloudWatch event IDs.
-3. Identify the last known-good Lambda code version or deployment package
-   digest. Use the approved AWS operator path to update the same
-   `<LAMBDA_FUNCTION_NAME>` to that prior code version in `<AWS_REGION>`.
-4. Verify the Lambda version, a test invocation, and CloudWatch logs. Confirm
-   that the application behavior is restored.
-5. Keep the OIDC trust and permission policies in place. Do not restore
+3. Select the retained `deployment-package.zip` from the last known-good
+   workflow run. Verify its immutable run ID, commit SHA, and SHA-256 digest,
+   then download it to the rollback job's working directory with that exact
+   filename.
+4. After the rollback job assumes the OIDC role, run this exact command:
+
+   ```bash
+   aws lambda update-function-code \
+     --function-name "<LAMBDA_FUNCTION_NAME>" \
+     --zip-file fileb://deployment-package.zip \
+     --region "<AWS_REGION>"
+   ```
+
+5. Wait for the Lambda update to complete, verify `$LATEST` contains the
+   retained package, invoke the function through the approved test path, and
+   check CloudWatch and CloudTrail. Record the rollback job URL, artifact
+   digest, command output, and verification event IDs.
+6. Keep the OIDC trust and permission policies in place. Do not restore
    `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or any other static keys.
-6. Re-enable the workflow only after the failed policy, environment variable,
-   or application change is corrected and the first-deploy validation
-   checklist can be completed again.
+7. Re-enable the normal deployment workflow only after the failed policy,
+   environment variable, or application change is corrected and both
+   validation checklists can be completed again.
 
 If the OIDC role itself is unavailable, use the separately approved AWS
-break-glass operator identity and its existing audited process to restore the
-prior Lambda code version. That identity is an emergency AWS operator path,
-not a GitHub Actions credential, and must not be added to repository or
-environment secrets.
+break-glass operator identity and its existing audited process to run the same
+ZIP redeployment command. That identity is an emergency AWS operator path, not
+a GitHub Actions credential, and must not be added to repository or environment
+secrets.
 
 ## Completion record
 
-Attach the policy review, GitHub environment variable review, first-deploy
-workflow URL, CloudTrail verification, static-key deletion evidence, and any
-rollback evidence to the change record. The deployment migration is complete
-only when the checklist is fully checked and the PR has then been reviewed and
-merged.
+Attach the provider and policy reviews, GitHub environment variable review,
+initial and post-retirement workflow URLs, both CloudTrail validations,
+artifact-retention evidence, static-key retirement evidence, and any rollback
+evidence to the change record. The deployment migration is complete only when
+the checklist is fully checked and the PR has then been reviewed and merged.
