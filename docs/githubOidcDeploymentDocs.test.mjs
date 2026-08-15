@@ -39,7 +39,7 @@ test('OIDC policy templates parse and enforce the exact trust and Lambda scope',
     StringEquals: {
       'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
       'token.actions.githubusercontent.com:sub':
-        'repo:OWNER/REPOSITORY:environment:production',
+        'repo:ciaran-finnegan/License-Plate-Recognition-Notifier:environment:production',
     },
   });
 
@@ -60,59 +60,86 @@ test('OIDC policy templates parse and enforce the exact trust and Lambda scope',
   assert.ok(resources.every((resource) => !resource.includes('*')));
 });
 
-test('OIDC deployment guide separates initial validation, key retirement, and post-retirement validation', async () => {
+test('OIDC deployment guide requires production environment protections', async () => {
   const guide = await readFile(guidePath, 'utf8');
-  const initialValidationIndex = guide.indexOf(
-    '## 5. Initial OIDC deployment validation',
-  );
-  const retirementIndex = guide.indexOf('## 6. Retire the static keys');
-  const postRetirementIndex = guide.indexOf(
-    '## 7. Post-retirement validation',
-  );
-  const rollbackIndex = guide.indexOf('## 8. Break-glass rollback');
 
-  assert.ok(initialValidationIndex >= 0);
-  assert.ok(retirementIndex > initialValidationIndex);
-  assert.ok(postRetirementIndex > retirementIndex);
-  assert.ok(rollbackIndex > postRetirementIndex);
-
-  const initialValidation = guide.slice(
-    initialValidationIndex,
-    retirementIndex,
-  );
-  const retirement = guide.slice(retirementIndex, postRetirementIndex);
-  const postRetirement = guide.slice(postRetirementIndex, rollbackIndex);
-
-  assert.match(initialValidation, /CloudTrail/i);
-  assert.doesNotMatch(
-    initialValidation,
-    /\[[ x]\].*old static access keys are (?:deleted|deactivated)/i,
-  );
-  assert.match(retirement, /deactivate|delete/i);
-  assert.match(postRetirement, /second.*deployment/i);
-  assert.match(postRetirement, /CloudTrail/i);
-  assert.match(postRetirement, /record.*(?:run URL|event ID)/i);
-  assert.match(guide, /remains unmerged until every checklist item passes/i);
+  assert.match(guide, /required reviewer/i);
+  assert.match(guide, /prevent self-review/i);
+  assert.match(guide, /deployment branch(?:es)?.*`main`/i);
+  assert.match(guide, /administrator bypass.*disabled/i);
+  assert.match(guide, /where (?:the plan|supported|available)/i);
 });
 
-test('OIDC deployment guide gives an executable retained-artifact rollback', async () => {
+test('OIDC deployment guide stages readiness, merge deployment, retirement, and manual revalidation', async () => {
   const guide = await readFile(guidePath, 'utf8');
-  const rollbackIndex = guide.indexOf('## 8. Break-glass rollback');
+  const readinessIndex = guide.indexOf('## 5. Pre-merge external readiness');
+  const firstDeployIndex = guide.indexOf('## 6. Merge-triggered first deployment');
+  const retirementIndex = guide.indexOf('## 7. Retire the static keys');
+  const revalidationIndex = guide.indexOf('## 8. workflow_dispatch revalidation');
+  const rollbackIndex = guide.indexOf('## 9. Break-glass rollback');
+
+  assert.ok(readinessIndex >= 0);
+  assert.ok(firstDeployIndex > readinessIndex);
+  assert.ok(retirementIndex > firstDeployIndex);
+  assert.ok(revalidationIndex > retirementIndex);
+  assert.ok(rollbackIndex > revalidationIndex);
+
+  const readiness = guide.slice(readinessIndex, firstDeployIndex);
+  const firstDeploy = guide.slice(firstDeployIndex, retirementIndex);
+  const retirement = guide.slice(retirementIndex, revalidationIndex);
+  const revalidation = guide.slice(revalidationIndex, rollbackIndex);
+
+  assert.match(readiness, /draft and unmerged/i);
+  assert.match(readiness, /provider.*role.*environment.*variables/is);
+  assert.match(firstDeploy, /merge.*`main`/i);
+  assert.match(firstDeploy, /push.*first deployment/i);
+  assert.match(firstDeploy, /validate/i);
+  assert.match(retirement, /deactivate every/i);
+  assert.match(revalidation, /workflow_dispatch/);
+  assert.match(revalidation, /permanently delete/i);
+});
+
+test('OIDC deployment guide inventories every secret scope and retires every IAM key', async () => {
+  const guide = await readFile(guidePath, 'utf8');
+
+  assert.match(guide, /repository secrets/i);
+  assert.match(guide, /environment secrets/i);
+  assert.match(guide, /organization secrets/i);
+  assert.match(guide, /inventory.*IAM user.*access key/is);
+  assert.match(guide, /deactivate every.*access key/is);
+  assert.match(guide, /revalidat.*workflow_dispatch/is);
+  assert.match(guide, /permanently delete every.*access key/is);
+});
+
+test('OIDC deployment guide gives exact CloudTrail field validation', async () => {
+  const guide = await readFile(guidePath, 'utf8');
+
+  assert.match(guide, /`eventSource` = `sts\.amazonaws\.com`/);
+  assert.match(guide, /`eventName` = `AssumeRoleWithWebIdentity`/);
+  assert.match(guide, /`requestParameters\.roleArn`/);
+  assert.match(guide, /`requestParameters\.roleSessionName`/);
+  assert.match(guide, /`responseElements\.subjectFromWebIdentityToken`/);
+  assert.match(guide, /`responseElements\.audience` = `sts\.amazonaws\.com`/);
+  assert.match(guide, /`eventSource` = `lambda\.amazonaws\.com`/);
+  assert.match(guide, /`eventName` = `UpdateFunctionCode20150331v2`/);
+  assert.match(guide, /`requestParameters\.functionName`/);
+  assert.match(guide, /`userIdentity\.type` = `AssumedRole`/);
+  assert.match(guide, /`userIdentity\.arn`/);
+  assert.match(guide, /github-actions-lambda-deploy/);
+});
+
+test('OIDC deployment guide gives an executable workflow rollback', async () => {
+  const guide = await readFile(guidePath, 'utf8');
+  const rollbackIndex = guide.indexOf('## 9. Break-glass rollback');
   const rollback = guide.slice(rollbackIndex);
 
   assert.ok(rollbackIndex >= 0);
-  assert.match(rollback, /retained.*deployment-package\.zip/i);
-  assert.match(rollback, /retention/i);
-  assert.match(rollback, /operator.*permission/i);
-  assert.match(rollback, /OIDC role/i);
-  assert.match(
-    rollback,
-    /aws lambda update-function-code \\\n+\s+--function-name "<LAMBDA_FUNCTION_NAME>" \\\n+\s+--zip-file fileb:\/\/deployment-package\.zip \\\n+\s+--region "<AWS_REGION>"/,
-  );
-  assert.match(
-    rollback,
-    /old (?:published )?version does not\s+restore\s+`\$LATEST`/i,
-  );
+  assert.match(rollback, /rollback-lambda\.yml/);
+  assert.match(rollback, /workflow_dispatch/);
+  assert.match(rollback, /successful.*run ID/i);
+  assert.match(rollback, /artifact name/i);
+  assert.match(rollback, /SHA-256/i);
+  assert.match(rollback, /production.*reviewer/is);
   assert.match(rollback, /does not\s+restore static|static.*key.*back/is);
 });
 

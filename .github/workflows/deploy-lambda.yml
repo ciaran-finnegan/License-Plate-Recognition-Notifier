@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+concurrency:
+  group: production-lambda-deployment
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -22,6 +27,67 @@ jobs:
         with:
           python-version: 3.11
 
+      - name: Validate deployment configuration
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_LAMBDA_FUNCTION_NAME: ${{ vars.AWS_LAMBDA_FUNCTION_NAME }}
+        run: |
+          set -euo pipefail
+          : "${AWS_ROLE_ARN:?AWS_ROLE_ARN must be set}"
+          : "${AWS_REGION:?AWS_REGION must be set}"
+          : "${AWS_LAMBDA_FUNCTION_NAME:?AWS_LAMBDA_FUNCTION_NAME must be set}"
+
+          [[ "$AWS_ROLE_ARN" =~ ^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]{1,512}$ ]] || {
+            printf '%s\n' 'AWS_ROLE_ARN has an invalid role ARN form' >&2
+            exit 1
+          }
+          [[ "$AWS_REGION" =~ ^[a-z]{2}(-[a-z0-9]+)+-[0-9]+$ ]] || {
+            printf '%s\n' 'AWS_REGION has an invalid region form' >&2
+            exit 1
+          }
+          [[ "$AWS_LAMBDA_FUNCTION_NAME" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || {
+            printf '%s\n' 'AWS_LAMBDA_FUNCTION_NAME has an invalid function name form' >&2
+            exit 1
+          }
+
+      - name: Create deployment package
+        run: |
+          set -euo pipefail
+          rm -rf package deployment-package.zip deployment-package.zip.sha256
+          mkdir package
+          python -m pip install --requirement requirements.txt --target package
+          cp /usr/lib/x86_64-linux-gnu/libjpeg.so.8 package/libjpeg.so.8
+          (
+            cd package
+            zip -qr ../deployment-package.zip .
+          )
+          zip -q deployment-package.zip lambda_function.py
+          sha256sum deployment-package.zip > deployment-package.zip.sha256
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lambda-deployment-package
+          path: |
+            deployment-package.zip
+            deployment-package.zip.sha256
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Guard current main
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          current_main_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [[ "$EXPECTED_SHA" != "$current_main_sha" ]]; then
+            printf 'Refusing deployment: run SHA %s is not current main %s\n' \
+              "$EXPECTED_SHA" "$current_main_sha" >&2
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
@@ -29,25 +95,13 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           role-session-name: github-actions-lambda-deploy
 
-      - name: Install AWS CLI
-        run: |
-          pip3 install awscli
-          aws --version
-
-      - name: Create Deployment Package
-        run: |
-          mkdir package
-          pip3 install -r requirements.txt --target ./package
-          # Copy libjpeg.so.8 from the Ubuntu system directory
-          cp /usr/lib/x86_64-linux-gnu/libjpeg.so.8 ./package/libjpeg.so.8
-          cd package
-          zip -r ../deployment-package.zip .
-          cd ..
-          zip deployment-package.zip lambda_function.py
-
       - name: Deploy to Lambda
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_LAMBDA_FUNCTION_NAME: ${{ vars.AWS_LAMBDA_FUNCTION_NAME }}
         run: |
+          set -euo pipefail
           aws lambda update-function-code \
-            --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" \
-            --zip-file fileb://deployment-package.zip \
-            --region "${{ vars.AWS_REGION }}"
+            --function-name "$AWS_LAMBDA_FUNCTION_NAME" \
+            --zip-file "fileb://deployment-package.zip" \
+            --region "$AWS_REGION"

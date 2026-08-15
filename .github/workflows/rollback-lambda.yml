@@ -1,0 +1,133 @@
+name: Roll Back Python Lambda Function
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_run_id:
+        description: Successful deployment workflow run ID
+        required: true
+        type: string
+      artifact_name:
+        description: Deployment artifact name from that run
+        required: true
+        default: lambda-deployment-package
+        type: string
+
+concurrency:
+  group: production-lambda-deployment
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    environment: production
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate rollback request
+        env:
+          DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_LAMBDA_FUNCTION_NAME: ${{ vars.AWS_LAMBDA_FUNCTION_NAME }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOYMENT_RUN_ID:?deployment_run_id must be set}"
+          : "${ARTIFACT_NAME:?artifact_name must be set}"
+          : "${AWS_ROLE_ARN:?AWS_ROLE_ARN must be set}"
+          : "${AWS_REGION:?AWS_REGION must be set}"
+          : "${AWS_LAMBDA_FUNCTION_NAME:?AWS_LAMBDA_FUNCTION_NAME must be set}"
+
+          [[ "$DEPLOYMENT_RUN_ID" =~ ^[1-9][0-9]*$ ]] || {
+            printf '%s\n' 'deployment_run_id must be a positive integer' >&2
+            exit 1
+          }
+          [[ "$ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || {
+            printf '%s\n' 'artifact_name has an invalid form' >&2
+            exit 1
+          }
+          [[ "$AWS_ROLE_ARN" =~ ^arn:(aws|aws-us-gov|aws-cn):iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]{1,512}$ ]] || {
+            printf '%s\n' 'AWS_ROLE_ARN has an invalid role ARN form' >&2
+            exit 1
+          }
+          [[ "$AWS_REGION" =~ ^[a-z]{2}(-[a-z0-9]+)+-[0-9]+$ ]] || {
+            printf '%s\n' 'AWS_REGION has an invalid region form' >&2
+            exit 1
+          }
+          [[ "$AWS_LAMBDA_FUNCTION_NAME" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || {
+            printf '%s\n' 'AWS_LAMBDA_FUNCTION_NAME has an invalid function name form' >&2
+            exit 1
+          }
+
+      - name: Verify source deployment run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
+        run: |
+          set -euo pipefail
+          run_is_approved="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOYMENT_RUN_ID" --jq '
+              .status == "completed" and
+              .conclusion == "success" and
+              .path == ".github/workflows/deploy-lambda.yml" and
+              .head_branch == "main"
+            '
+          )"
+          if [[ "$run_is_approved" != "true" ]]; then
+            printf '%s\n' 'Run must be a successful main deployment' >&2
+            exit 1
+          fi
+
+      - name: Download deployment artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          run-id: ${{ inputs.deployment_run_id }}
+          name: ${{ inputs.artifact_name }}
+          github-token: ${{ github.token }}
+          path: rollback-artifact
+
+      - name: Verify deployment artifact
+        run: |
+          set -euo pipefail
+          cd rollback-artifact
+          test -f deployment-package.zip
+          test -f deployment-package.zip.sha256
+          sha256sum --check deployment-package.zip.sha256
+
+      - name: Guard current main
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          current_main_sha="$(git rev-parse refs/remotes/origin/main)"
+          if [[ "$EXPECTED_SHA" != "$current_main_sha" ]]; then
+            printf 'Refusing rollback: workflow SHA %s is not current main %s\n' \
+              "$EXPECTED_SHA" "$current_main_sha" >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-actions-lambda-rollback
+
+      - name: Roll back Lambda
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_LAMBDA_FUNCTION_NAME: ${{ vars.AWS_LAMBDA_FUNCTION_NAME }}
+        run: |
+          set -euo pipefail
+          aws lambda update-function-code \
+            --function-name "$AWS_LAMBDA_FUNCTION_NAME" \
+            --zip-file "fileb://rollback-artifact/deployment-package.zip" \
+            --region "$AWS_REGION"

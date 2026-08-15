@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
 
-const workflowPath = fileURLToPath(new URL('./deploy-lambda.yml', import.meta.url));
+const workflowPath = new URL('./rollback-lambda.yml', import.meta.url);
 
 function actionRefs(workflow) {
   return [...workflow.matchAll(/^\s*uses:\s*([^\s#]+)/gm)].map((match) => match[1]);
@@ -34,25 +33,51 @@ function runBlocks(workflow) {
   return blocks;
 }
 
-test('deploy workflow has only approved triggers and serializes production changes', async () => {
+test('rollback is manual, production-gated, and serialized with deployments', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
 
-  assert.match(
-    workflow,
-    /on:\n  push:\n    branches:\n      - main\n  workflow_dispatch:/,
-  );
-  assert.doesNotMatch(workflow, /\bpull_request(?:_target)?:/);
+  assert.match(workflow, /on:\n  workflow_dispatch:\n    inputs:/);
+  assert.match(workflow, /deployment_run_id:\n\s+description:/);
+  assert.match(workflow, /artifact_name:\n\s+description:/);
+  assert.doesNotMatch(workflow, /^\s+(?:push|pull_request|pull_request_target|schedule):/m);
   assert.match(
     workflow,
     /concurrency:\n  group: production-lambda-deployment\n  cancel-in-progress: false/,
   );
   assert.match(
     workflow,
-    /jobs:\n  deploy:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      id-token: write\n    environment: production/,
+    /permissions:\n\s+actions: read\n\s+contents: read\n\s+id-token: write\n\s+environment: production/,
   );
 });
 
-test('deploy workflow rejects credential fallbacks and pins every action', async () => {
+test('rollback verifies a successful deploy run and its checksum before OIDC', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+  const verifyRunIndex = workflow.indexOf('- name: Verify source deployment run');
+  const downloadIndex = workflow.indexOf('- name: Download deployment artifact');
+  const checksumIndex = workflow.indexOf('- name: Verify deployment artifact');
+  const credentialsIndex = workflow.indexOf('- name: Configure AWS credentials');
+
+  assert.ok(verifyRunIndex >= 0);
+  assert.ok(downloadIndex > verifyRunIndex);
+  assert.ok(checksumIndex > downloadIndex);
+  assert.ok(credentialsIndex > checksumIndex);
+  assert.match(workflow, /\.status == "completed"/);
+  assert.match(workflow, /\.conclusion == "success"/);
+  assert.match(workflow, /\.path == "\.github\/workflows\/deploy-lambda\.yml"/);
+  assert.match(workflow, /\.head_branch == "main"/);
+  assert.doesNotMatch(workflow, /\.event == "push"/);
+  assert.match(
+    workflow,
+    /uses: actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8\.0\.1/,
+  );
+  assert.match(workflow, /run-id: \$\{\{ inputs\.deployment_run_id \}\}/);
+  assert.match(workflow, /name: \$\{\{ inputs\.artifact_name \}\}/);
+  assert.match(workflow, /github-token: \$\{\{ github\.token \}\}/);
+  assert.match(workflow, /path: rollback-artifact/);
+  assert.match(workflow, /sha256sum --check deployment-package\.zip\.sha256/);
+});
+
+test('rollback has no credential escape hatch and pins every action', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
 
   assert.doesNotMatch(workflow, /AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY/i);
@@ -66,39 +91,9 @@ test('deploy workflow rejects credential fallbacks and pins every action', async
   const refs = actionRefs(workflow);
   assert.ok(refs.length > 0);
   assert.ok(refs.every((ref) => /@[0-9a-f]{40}$/.test(ref)), refs.join('\n'));
-  assert.ok(
-    refs.includes('actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'),
-  );
 });
 
-test('deploy workflow packages, checksums, and retains the artifact before OIDC', async () => {
-  const workflow = await readFile(workflowPath, 'utf8');
-  const packageIndex = workflow.indexOf('- name: Create deployment package');
-  const uploadIndex = workflow.indexOf('- name: Upload deployment artifact');
-  const credentialsIndex = workflow.indexOf('- name: Configure AWS credentials');
-
-  assert.ok(packageIndex >= 0);
-  assert.ok(uploadIndex > packageIndex);
-  assert.ok(credentialsIndex > uploadIndex);
-  assert.match(
-    workflow,
-    /python -m pip install --requirement requirements\.txt --target package/,
-  );
-  assert.match(
-    workflow,
-    /sha256sum deployment-package\.zip > deployment-package\.zip\.sha256/,
-  );
-  assert.match(
-    workflow,
-    /uses: actions\/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7\.0\.1/,
-  );
-  assert.match(
-    workflow,
-    /with:\n\s+name: lambda-deployment-package\n\s+path: \|\n\s+deployment-package\.zip\n\s+deployment-package\.zip\.sha256\n\s+retention-days: 30\n\s+if-no-files-found: error/,
-  );
-});
-
-test('deploy workflow validates variables and keeps contexts out of shell', async () => {
+test('rollback validates inputs and variables without shell interpolation', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
   const shell = runBlocks(workflow).join('\n');
 
@@ -109,12 +104,9 @@ test('deploy workflow validates variables and keeps contexts out of shell', asyn
     workflow,
     /AWS_LAMBDA_FUNCTION_NAME: \$\{\{ vars\.AWS_LAMBDA_FUNCTION_NAME \}\}/,
   );
-  assert.match(shell, /:\s+"\$\{AWS_ROLE_ARN:\?AWS_ROLE_ARN must be set\}"/);
-  assert.match(shell, /:\s+"\$\{AWS_REGION:\?AWS_REGION must be set\}"/);
-  assert.match(
-    shell,
-    /:\s+"\$\{AWS_LAMBDA_FUNCTION_NAME:\?AWS_LAMBDA_FUNCTION_NAME must be set\}"/,
-  );
+  assert.match(workflow, /DEPLOYMENT_RUN_ID: \$\{\{ inputs\.deployment_run_id \}\}/);
+  assert.match(workflow, /ARTIFACT_NAME: \$\{\{ inputs\.artifact_name \}\}/);
+  assert.match(shell, /\[\[ "\$DEPLOYMENT_RUN_ID" =~ \^\[1-9\]\[0-9\]\*\$ \]\]/);
   assert.match(shell, /\[\[ "\$AWS_ROLE_ARN" =~ \^arn:/);
   assert.match(shell, /\[\[ "\$AWS_REGION" =~ \^\[a-z\]/);
   assert.match(shell, /\[\[ "\$AWS_LAMBDA_FUNCTION_NAME" =~ \^\[A-Za-z0-9_/);
@@ -122,30 +114,24 @@ test('deploy workflow validates variables and keeps contexts out of shell', asyn
   assert.match(shell, /--region "\$AWS_REGION"/);
 });
 
-test('deploy workflow checks current main immediately before credentials and deployment', async () => {
+test('rollback guards current main and assumes OIDC immediately before update', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
   const stepNames = [...workflow.matchAll(/^\s+- name: (.+)$/gm)].map(
     (match) => match[1],
   );
   const guardIndex = stepNames.indexOf('Guard current main');
   const credentialsIndex = stepNames.indexOf('Configure AWS credentials');
-  const deployIndex = stepNames.indexOf('Deploy to Lambda');
+  const rollbackIndex = stepNames.indexOf('Roll back Lambda');
 
   assert.ok(guardIndex >= 0);
   assert.equal(credentialsIndex, guardIndex + 1);
-  assert.equal(deployIndex, credentialsIndex + 1);
+  assert.equal(rollbackIndex, credentialsIndex + 1);
   assert.match(workflow, /EXPECTED_SHA: \$\{\{ github\.sha \}\}/);
-  assert.match(
-    workflow,
-    /git fetch --no-tags origin refs\/heads\/main:refs\/remotes\/origin\/main/,
-  );
-  assert.match(workflow, /current_main_sha="\$\(git rev-parse refs\/remotes\/origin\/main\)"/);
-  assert.match(workflow, /"\$EXPECTED_SHA" != "\$current_main_sha"/);
   assert.match(
     workflow,
     /aws-actions\/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6\.2\.3/,
   );
   assert.match(workflow, /role-to-assume: \$\{\{ vars\.AWS_ROLE_ARN \}\}/);
   assert.match(workflow, /aws-region: \$\{\{ vars\.AWS_REGION \}\}/);
-  assert.match(workflow, /role-session-name: github-actions-lambda-deploy/);
+  assert.match(workflow, /role-session-name: github-actions-lambda-rollback/);
 });
