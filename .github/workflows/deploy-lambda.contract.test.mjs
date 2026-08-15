@@ -16,15 +16,15 @@ test('deploy workflow uses GitHub OIDC and production variables', async () => {
   );
   assert.match(
     workflow,
-    /actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/,
+    /actions\/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\.0\.1/,
   );
   assert.match(
     workflow,
-    /actions\/setup-python@42375524e23c412d93fb67b49958b491fce71c38/,
+    /actions\/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7\.0\.0/,
   );
   assert.match(
     workflow,
-    /aws-actions\/configure-aws-credentials@b47578312673ae6fa5b5096b330d9fbac3d116df/,
+    /aws-actions\/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6\.2\.3/,
   );
   assert.match(workflow, /role-to-assume: \$\{\{ vars\.AWS_ROLE_ARN \}\}/);
   assert.match(workflow, /aws-region: \$\{\{ vars\.AWS_REGION \}\}/);
