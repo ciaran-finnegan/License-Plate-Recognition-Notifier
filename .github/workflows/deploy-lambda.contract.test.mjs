@@ -125,6 +125,7 @@ test('deploy guards current main before downloading and verifying the current-ru
   const guardIndex = names.indexOf('Guard current main');
   const downloadIndex = names.indexOf('Download deployment artifact');
   const verifyIndex = names.indexOf('Verify deployment artifact');
+  const finalGuardIndex = names.indexOf('Recheck current main');
   const credentialsIndex = names.indexOf('Configure AWS credentials');
   const deployIndex = names.indexOf('Deploy to Lambda');
   const credentialActions = [
@@ -136,7 +137,8 @@ test('deploy guards current main before downloading and verifying the current-ru
   assert.ok(guardIndex >= 0);
   assert.ok(downloadIndex > guardIndex);
   assert.equal(verifyIndex, downloadIndex + 1);
-  assert.equal(credentialsIndex, verifyIndex + 1);
+  assert.equal(finalGuardIndex, verifyIndex + 1);
+  assert.equal(credentialsIndex, finalGuardIndex + 1);
   assert.equal(deployIndex, credentialsIndex + 1);
   assert.equal(credentialActions.length, 1);
   assert.ok(
@@ -167,6 +169,55 @@ test('deploy guards current main before downloading and verifying the current-ru
     deployJob,
     /--zip-file "fileb:\/\/deployment-artifact\/deployment-package\.zip"/,
   );
+});
+
+test('deploy rechecks current main after checksum immediately before OIDC', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+  const deployJob = jobBlock(workflow, 'deploy');
+  const finalGuardStart = deployJob.indexOf('- name: Recheck current main');
+  const credentialsStart = deployJob.indexOf('- name: Configure AWS credentials');
+
+  assert.ok(finalGuardStart >= 0);
+  assert.ok(
+    finalGuardStart >
+      deployJob.indexOf('sha256sum --check deployment-package.zip.sha256'),
+  );
+  assert.ok(credentialsStart > finalGuardStart);
+
+  const finalGuard = deployJob.slice(finalGuardStart, credentialsStart);
+  assert.match(finalGuard, /EXPECTED_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(
+    finalGuard,
+    /\[\[ "\$EXPECTED_SHA" =~ \^\[0-9a-f\]\{40\}\$ \]\]/,
+  );
+  assert.match(
+    finalGuard,
+    /git fetch --no-tags origin refs\/heads\/main:refs\/remotes\/origin\/main/,
+  );
+  assert.match(
+    finalGuard,
+    /current_main_sha="\$\(git rev-parse refs\/remotes\/origin\/main\)"/,
+  );
+  assert.match(
+    finalGuard,
+    /\[\[ "\$current_main_sha" =~ \^\[0-9a-f\]\{40\}\$ \]\]/,
+  );
+  assert.match(finalGuard, /"\$EXPECTED_SHA" != "\$current_main_sha"/);
+  assert.match(finalGuard, /exit 1/);
+  assert.equal(
+    (
+      deployJob.match(
+        /git fetch --no-tags origin refs\/heads\/main:refs\/remotes\/origin\/main/g,
+      ) ?? []
+    ).length,
+    2,
+  );
+  assert.equal(
+    (deployJob.match(/"\$EXPECTED_SHA" != "\$current_main_sha"/g) ?? [])
+      .length,
+    2,
+  );
+  assert.doesNotMatch(runBlocks(finalGuard).join('\n'), /\$\{\{/);
 });
 
 test('deploy validates variables, keeps contexts out of shell, and uses pinned OIDC', async () => {

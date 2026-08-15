@@ -113,6 +113,28 @@ jobs:
           test -f deployment-package.zip.sha256
           sha256sum --check deployment-package.zip.sha256
 
+      - name: Recheck current main
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            printf '%s\n' 'github.sha has an invalid commit SHA form' >&2
+            exit 1
+          }
+
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          current_main_sha="$(git rev-parse refs/remotes/origin/main)"
+          [[ "$current_main_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            printf '%s\n' 'Current main has an invalid commit SHA form' >&2
+            exit 1
+          }
+          if [[ "$EXPECTED_SHA" != "$current_main_sha" ]]; then
+            printf 'Refusing deployment: run SHA %s is not current main %s after artifact verification\n' \
+              "$EXPECTED_SHA" "$current_main_sha" >&2
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
