@@ -126,15 +126,25 @@ Configure all available environment protections:
 - Keep administrator bypass disabled where supported; administrators must not
   bypass the production reviewer gate.
 
-The deployment and rollback jobs must retain `environment: production`. The
-normal job has `contents: read` and `id-token: write`; rollback additionally
-has `actions: read` so it can retrieve an artifact from a selected workflow
-run. Neither workflow has a static credential fallback.
+The normal workflow separates its trust boundaries. The package job has
+`contents: read` only, no `id-token: write`, and no `production` environment.
+It is the only job that installs dependencies or executes package install
+scripts. Those install scripts cannot request a GitHub OIDC token or inherit
+production environment secrets or variables.
+
+The deploy job has `needs: package`, `environment: production`, and only
+`actions: read`, `contents: read`, and `id-token: write`. It uses
+`actions: read` to retrieve the package produced by the current workflow run
+and `contents: read` to check current `main`. Rollback has the same three job
+permissions and production environment. Neither workflow has a static
+credential fallback.
 
 Both workflows use the shared `production-lambda-deployment` concurrency group
 with `cancel-in-progress: false`. A newer run waits rather than cancelling a
-deployment during an AWS API call. Immediately before OIDC, each workflow also
-checks that its workflow SHA is still current `main`.
+deployment during an AWS API call. In the normal workflow, the deploy job checks
+that its workflow SHA is current `main` before it downloads the artifact, checks
+the checksum, or requests OIDC. Rollback repeats its current-`main` guard after
+all source-run and artifact validation and immediately before OIDC.
 
 ## 5. Pre-merge external readiness
 
@@ -166,11 +176,14 @@ Record each scope checked, secret name, IAM user, access key ID, current key
 status, owner, and intended retirement action. Do not expose secret values in
 the record. Do not deactivate or delete the keys yet; first prove the OIDC path.
 
-Review the workflows while the PR is still unmerged. Confirm that dependencies,
-`deployment-package.zip`, and `deployment-package.zip.sha256` are produced
-before credentials, then uploaded as `lambda-deployment-package` for 30 days.
-Missing artifact files must fail the job. Confirm all actions are pinned to full
-commit SHAs and neither workflow has a `pull_request` trigger.
+Review the workflows while the PR is still unmerged. Confirm the package job has
+only `contents: read`, has no environment, and contains every dependency install
+and packaging command. Confirm `deployment-package.zip` and
+`deployment-package.zip.sha256` are uploaded as
+`lambda-deployment-package` for 30 days and missing files fail the job. Confirm
+the production deploy job depends on that package job and checks current `main`
+before downloading and verifying the artifact. Confirm all actions are pinned
+to full commit SHAs and neither workflow has a `pull_request` trigger.
 
 Once every item above has evidence, mark the PR ready for review. Keep it
 unmerged if any AWS or GitHub setup remains outstanding.
@@ -181,16 +194,30 @@ Approve and merge the reviewed PR to `main`. The push starts the first deploymen
 The production reviewer must compare the displayed environment variables and
 commit SHA with the change record before approving the job.
 
-The job packages and uploads the ZIP and checksum without AWS credentials. It
-then verifies the run SHA is still current `main`, exchanges the GitHub OIDC
-token for the role session `github-actions-lambda-deploy`, and calls the hosted
-runner's AWS CLI. There is no workflow-installed AWS CLI or static-key path.
+The package job installs dependencies, builds the ZIP and checksum, and uploads
+them without the production environment or OIDC permission. After the
+`needs: package` dependency succeeds, the production deploy job verifies that
+`github.sha` is still current `main` before downloading
+`lambda-deployment-package` from the current workflow run. It verifies the
+bundled checksum, exchanges the GitHub OIDC token for the role session
+`github-actions-lambda-deploy`, and immediately calls the hosted runner's AWS
+CLI. There is no workflow-installed AWS CLI or static-key path.
 
 Validate the deployment and capture the workflow run URL and ID, commit SHA,
 artifact name, artifact SHA-256, role ARN, region, function name, environment
 approval, AWS response, and application validation evidence. Verify the Lambda
 through its approved test invocation or normal event path and inspect
 CloudWatch for errors.
+
+Once the run succeeds, open its GitHub Actions run page and record the full
+40-character lowercase head commit SHA. Cross-check that value against the
+linked commit on `main`. Download that run's hardcoded
+`lambda-deployment-package` artifact, extract it, run
+`sha256sum --check deployment-package.zip.sha256`, and then independently run
+`sha256sum deployment-package.zip`. Record the resulting 64-character lowercase
+SHA-256 in the deployment record with the run ID and commit SHA. These
+independently recorded values become the rollback inputs; do not wait for an
+incident to create them.
 
 ### Exact CloudTrail checks
 
@@ -270,26 +297,35 @@ OIDC role, and never restores static credentials.
 
 1. Disable **Deploy Python Lambda Function** to prevent another automatic push
    deployment while the incident is active. Leave the rollback workflow enabled.
-2. Select a successful deployment run ID from the `deploy-lambda.yml` workflow
-   on `main` whose known-good `lambda-deployment-package` artifact remains
-   within its 30-day retention period. Record the run URL, commit SHA, artifact
-   name, and expected SHA-256.
-3. Dispatch **Roll Back Python Lambda Function** from current `main`. Enter the
-   successful deployment run ID as `deployment_run_id` and the artifact name as
-   `artifact_name`.
-4. The production reviewer compares both inputs with the incident record before
-   approval. The job uses `actions: read` to verify the selected run completed
-   successfully, came from `deploy-lambda.yml` on `main`, and to download that
-   exact artifact.
-5. The job verifies `deployment-package.zip` against
-   `deployment-package.zip.sha256`, guards current `main`, and only then obtains
-   OIDC credentials. Credential configuration is immediately followed by
-   `UpdateFunctionCode` for the configured function and region.
-6. Validate `$LATEST` through the approved invocation path and inspect
+2. Select a successful deployment run ID from `deploy-lambda.yml` on `main`
+   whose known-good artifact is still within its 30-day retention period. Use
+   the numeric ID in the run URL as `deployment_run_id`.
+3. Obtain `expected_commit_sha` from the run page's head commit SHA. It must be
+   exactly 40 lowercase hexadecimal characters. Cross-check it against the
+   commit link on `main` and the deployment record captured after that run.
+4. Obtain `expected_sha256` from that deployment record. It must be exactly
+   64 lowercase hexadecimal characters. Download the prior run's artifact from the
+   GitHub Actions run page, verify its bundled checksum, and independently
+   compute the ZIP digest. Cross-check the computed digest against the recorded
+   SHA-256 before dispatch.
+5. Dispatch **Roll Back Python Lambda Function** from current `main` with
+   `deployment_run_id`, `expected_commit_sha`, and `expected_sha256`. The
+   artifact name is hardcoded as `lambda-deployment-package`; the operator
+   cannot select an arbitrary artifact name.
+6. The production reviewer compares all three inputs with the prior run and
+   deployment record before approval. The job validates their exact forms,
+   verifies that the source is a successful `deploy-lambda.yml` run on `main`,
+   and requires its `head_sha` to equal `expected_commit_sha`.
+7. The job downloads the hardcoded artifact, verifies the bundled checksum,
+   then independently compares the computed digest to `expected_sha256`. It
+   rejects either mismatch before the current-`main` guard or OIDC.
+8. After the current-`main` guard, credential configuration is immediately
+   followed by `UpdateFunctionCode` for the configured function and region.
+9. Validate `$LATEST` through the approved invocation path and inspect
    CloudWatch. Repeat the CloudTrail checks from section 6, substituting the
    role session name `github-actions-lambda-rollback` in the STS and Lambda
    assumed-role ARN fields.
-7. Record the rollback run URL, source deployment run ID, artifact digest,
+10. Record the rollback run URL, source deployment run ID, artifact digest,
    environment approval, AWS response, CloudTrail event IDs, and application
    result. Re-enable normal deployment only after the incident fix is reviewed.
 

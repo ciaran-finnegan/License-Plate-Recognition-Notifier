@@ -70,6 +70,18 @@ test('OIDC deployment guide requires production environment protections', async 
   assert.match(guide, /where (?:the plan|supported|available)/i);
 });
 
+test('OIDC deployment guide isolates untrusted packaging from production OIDC', async () => {
+  const guide = await readFile(guidePath, 'utf8');
+
+  assert.match(guide, /packag(?:e|ing) job/i);
+  assert.match(guide, /`contents: read` only/i);
+  assert.match(guide, /no `id-token: write`/i);
+  assert.match(guide, /no `production` environment/i);
+  assert.match(guide, /install scripts.*cannot request.*OIDC token/is);
+  assert.match(guide, /deploy job.*`needs: package`/is);
+  assert.match(guide, /guard.*before.*download.*checksum.*OIDC/is);
+});
+
 test('OIDC deployment guide stages readiness, merge deployment, retirement, and manual revalidation', async () => {
   const guide = await readFile(guidePath, 'utf8');
   const readinessIndex = guide.indexOf('## 5. Pre-merge external readiness');
@@ -137,8 +149,14 @@ test('OIDC deployment guide gives an executable workflow rollback', async () => 
   assert.match(rollback, /rollback-lambda\.yml/);
   assert.match(rollback, /workflow_dispatch/);
   assert.match(rollback, /successful.*run ID/i);
-  assert.match(rollback, /artifact name/i);
-  assert.match(rollback, /SHA-256/i);
+  assert.match(rollback, /`expected_commit_sha`/);
+  assert.match(rollback, /40.*lowercase hexadecimal/i);
+  assert.match(rollback, /`expected_sha256`/);
+  assert.match(rollback, /64.*lowercase hexadecimal/i);
+  assert.match(rollback, /artifact name.*hardcoded.*`lambda-deployment-package`/is);
+  assert.match(rollback, /run page.*head commit SHA/is);
+  assert.match(rollback, /deployment record.*SHA-256/is);
+  assert.match(rollback, /bundled checksum.*independent.*computed digest/is);
   assert.match(rollback, /production.*reviewer/is);
   assert.match(rollback, /does not\s+restore static|static.*key.*back/is);
 });

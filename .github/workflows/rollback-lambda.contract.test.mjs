@@ -38,7 +38,9 @@ test('rollback is manual, production-gated, and serialized with deployments', as
 
   assert.match(workflow, /on:\n  workflow_dispatch:\n    inputs:/);
   assert.match(workflow, /deployment_run_id:\n\s+description:/);
-  assert.match(workflow, /artifact_name:\n\s+description:/);
+  assert.match(workflow, /expected_commit_sha:\n\s+description:/);
+  assert.match(workflow, /expected_sha256:\n\s+description:/);
+  assert.doesNotMatch(workflow, /artifact_name:\n\s+description:/);
   assert.doesNotMatch(workflow, /^\s+(?:push|pull_request|pull_request_target|schedule):/m);
   assert.match(
     workflow,
@@ -50,7 +52,7 @@ test('rollback is manual, production-gated, and serialized with deployments', as
   );
 });
 
-test('rollback verifies a successful deploy run and its checksum before OIDC', async () => {
+test('rollback binds a successful main deploy run to the expected commit', async () => {
   const workflow = await readFile(workflowPath, 'utf8');
   const verifyRunIndex = workflow.indexOf('- name: Verify source deployment run');
   const downloadIndex = workflow.indexOf('- name: Download deployment artifact');
@@ -65,16 +67,33 @@ test('rollback verifies a successful deploy run and its checksum before OIDC', a
   assert.match(workflow, /\.conclusion == "success"/);
   assert.match(workflow, /\.path == "\.github\/workflows\/deploy-lambda\.yml"/);
   assert.match(workflow, /\.head_branch == "main"/);
-  assert.doesNotMatch(workflow, /\.event == "push"/);
+  assert.match(workflow, /\.head_sha/);
+  assert.match(workflow, /"\$run_head_sha" != "\$EXPECTED_COMMIT_SHA"/);
   assert.match(
     workflow,
     /uses: actions\/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8\.0\.1/,
   );
   assert.match(workflow, /run-id: \$\{\{ inputs\.deployment_run_id \}\}/);
-  assert.match(workflow, /name: \$\{\{ inputs\.artifact_name \}\}/);
+  assert.match(workflow, /name: lambda-deployment-package/);
+  assert.doesNotMatch(workflow, /inputs\.artifact_name/);
   assert.match(workflow, /github-token: \$\{\{ github\.token \}\}/);
   assert.match(workflow, /path: rollback-artifact/);
+});
+
+test('rollback checks the bundled checksum and the independent expected digest before OIDC', async () => {
+  const workflow = await readFile(workflowPath, 'utf8');
+  const checksumIndex = workflow.indexOf('- name: Verify deployment artifact');
+  const credentialsIndex = workflow.indexOf('- name: Configure AWS credentials');
+
+  assert.ok(checksumIndex >= 0);
+  assert.ok(credentialsIndex > checksumIndex);
   assert.match(workflow, /sha256sum --check deployment-package\.zip\.sha256/);
+  assert.match(
+    workflow,
+    /computed_sha256="\$\(sha256sum deployment-package\.zip\)"/,
+  );
+  assert.match(workflow, /computed_sha256="\$\{computed_sha256%% \*\}"/);
+  assert.match(workflow, /"\$computed_sha256" != "\$EXPECTED_SHA256"/);
 });
 
 test('rollback has no credential escape hatch and pins every action', async () => {
@@ -105,8 +124,12 @@ test('rollback validates inputs and variables without shell interpolation', asyn
     /AWS_LAMBDA_FUNCTION_NAME: \$\{\{ vars\.AWS_LAMBDA_FUNCTION_NAME \}\}/,
   );
   assert.match(workflow, /DEPLOYMENT_RUN_ID: \$\{\{ inputs\.deployment_run_id \}\}/);
-  assert.match(workflow, /ARTIFACT_NAME: \$\{\{ inputs\.artifact_name \}\}/);
+  assert.match(workflow, /EXPECTED_COMMIT_SHA: \$\{\{ inputs\.expected_commit_sha \}\}/);
+  assert.match(workflow, /EXPECTED_SHA256: \$\{\{ inputs\.expected_sha256 \}\}/);
+  assert.doesNotMatch(workflow, /ARTIFACT_NAME:/);
   assert.match(shell, /\[\[ "\$DEPLOYMENT_RUN_ID" =~ \^\[1-9\]\[0-9\]\*\$ \]\]/);
+  assert.match(shell, /\[\[ "\$EXPECTED_COMMIT_SHA" =~ \^\[0-9a-f\]\{40\}\$ \]\]/);
+  assert.match(shell, /\[\[ "\$EXPECTED_SHA256" =~ \^\[0-9a-f\]\{64\}\$ \]\]/);
   assert.match(shell, /\[\[ "\$AWS_ROLE_ARN" =~ \^arn:/);
   assert.match(shell, /\[\[ "\$AWS_REGION" =~ \^\[a-z\]/);
   assert.match(shell, /\[\[ "\$AWS_LAMBDA_FUNCTION_NAME" =~ \^\[A-Za-z0-9_/);
