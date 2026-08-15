@@ -8,24 +8,31 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: production
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
         with:
-          python-version: 3.11  # Replace with your Python version
+          python-version: 3.11
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@b47578312673ae6fa5b5096b330d9fbac3d116df
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: github-actions-lambda-deploy
 
       - name: Install AWS CLI
         run: |
           pip3 install awscli
           aws --version
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}   # Change to your region
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Create Deployment Package
         run: |
@@ -37,16 +44,10 @@ jobs:
           zip -r ../deployment-package.zip .
           cd ..
           zip deployment-package.zip lambda_function.py
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}   # Change to your region
 
       - name: Deploy to Lambda
         run: |
           aws lambda update-function-code \
-            --function-name processInboundEmails \
+            --function-name "${{ vars.AWS_LAMBDA_FUNCTION_NAME }}" \
             --zip-file fileb://deployment-package.zip \
-            --region $AWS_REGION
-        env:
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            --region "${{ vars.AWS_REGION }}"
