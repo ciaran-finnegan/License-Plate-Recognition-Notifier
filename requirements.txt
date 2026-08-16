@@ -2,12 +2,12 @@ boto3==1.28.7
 brotli==1.0.9
 brotlicffi==1.0.9.2
 chardet==5.2.0
-cryptography==41.0.3
+cryptography==44.0.1
 fuzzywuzzy==0.18.0
 pyOpenSSL==23.2.0
 python-Levenshtein==0.12.2  # Added python-Levenshtein
-Pillow==9.3.0
-requests==2.31.0
+Pillow==10.3.0
+requests==2.32.4
 simplejson==3.19.1
 twilio==8.7.0
 typing_extensions==4.7.1
