@@ -97,7 +97,7 @@ deployment, retire static keys, and perform a break-glass rollback if needed.
 
 ## Conclusion
 
-That's it! You now have an automated License Plate Recognition Gate Control System. Feel free to customise and adapt the system to your specific use case and requirements.
+Feel free to customise and adapt the system to your specific use case and requirements.
 
 For more details and technical information, refer to the code and documentation in this GitHub repository.
 
@@ -105,3 +105,6 @@ For more details and technical information, refer to the code and documentation 
 
 **Maintained by: Ciaran Finnegan**
 **Contact: https://github.com/ciaran-finnegan**
+
+## Licence
+GNU General Public License v3.0
